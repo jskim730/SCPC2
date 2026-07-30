@@ -32,6 +32,27 @@ cd android
 공개 Runner 연습과 emulator 설정은 `SETUP_AND_REHEARSAL_RUNBOOK.md`, 현재 구현 상태와 남은
 작업은 `android/IMPLEMENTATION_STATUS.md`를 참고합니다.
 
+## 협업자가 먼저 읽을 것
+
+1. `android/IMPLEMENTATION_STATUS.md` — 어디까지 됐는지, 무엇이 남았는지, 되돌리면 안 되는 설계 결정
+2. `COMPETITION_CONTEXT.md` — 공식 규칙 snapshot. 기술 판단의 근거는 여기서 인용합니다
+3. `AGENTS.md` — 작업공간 규칙
+
+레이어 경계를 지킵니다. 판단 로직은 `android/app/src/main/java/com/scpc/deliveryagent/core/`,
+한국어·메뉴·금액은 `android/app/src/main/assets/synthetic/catalog.json`에 둡니다. `core/`에 한국어
+문자열이나 메뉴 지식을 넣지 않습니다 — 그 경계가 production parity 설명의 근거입니다.
+
+판단 로직을 바꾸는 커밋은 `:app:testDebugUnitTest`(97개, emulator 불필요)를 통과시키고
+`android/IMPLEMENTATION_STATUS.md`의 해당 절을 함께 고칩니다.
+
+## 참가 자격 관련 확인 사항
+
+본 대회는 **개인전 1인**이며(`COMPETITION_CONTEXT.md` §3), §19는 대회 기간 중 source와 result를
+개인적으로 타 참가자와 공유하지 말고 공개는 Dacon 공식 플랫폼을 쓰라고 규정합니다. 이 저장소를
+공유하기 전에 협업자의 역할·참가 여부, 저장소 공개 범위(public/private), §20 제출물 창작·비침해
+보증의 주체를 확인해 기록하십시오. 저장소가 public이면 `release_v3/`(공식 Kit)와 공식 용어해설집
+PDF까지 재배포됩니다.
+
 ## 보안·제출 원칙
 
 - 실제 개인정보·결제·외부 행동을 사용하지 않습니다.

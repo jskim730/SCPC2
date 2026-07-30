@@ -1,0 +1,17 @@
+# Normalise text to LF inside the repository regardless of each contributor's
+# core.autocrlf setting, so a collaborator on another OS cannot introduce
+# line-ending churn. Working trees still check out with native endings.
+* text=auto
+
+# Submission and Kit artifacts must never be normalised. A single changed byte in
+# a signed APK, the starter AAR or the Gradle wrapper invalidates it.
+*.apk binary
+*.aar binary
+*.jar binary
+*.zip binary
+*.keystore binary
+*.jks binary
+*.pdf binary
+*.docx binary
+*.png binary
+*.mp4 binary
