@@ -1,6 +1,6 @@
 # 구현 상태와 남은 작업
 
-최종 갱신: 2026-07-30 KST · 프로젝트 root: `android/` · 저장소: `github.com/jskim730/SCPC2`
+최종 갱신: 2026-07-31 KST · 프로젝트 root: `android/` · 저장소: `github.com/jskim730/SCPC2`
 
 이 문서는 **협업 인수인계 문서**다. 코드를 바꿀 때 이 문서의 "핵심 설계 결정"과 "남은 작업"을
 같은 커밋에서 갱신한다. 공식 사실의 기준은 항상 루트의 `COMPETITION_CONTEXT.md`와 `release_v3/`다.
@@ -15,7 +15,7 @@
 | 공식 Runner 13-step 완주 | **미실행.** release 서명 뒤 수행 |
 | release 서명 설정 | **없음.** 최종 APK 전 필수 |
 | 제출물 7종 | `APP.apk` 빌드 경로만 확보. 문서 4종·`SAMPLE_EXPORT`·영상 미착수 |
-| Mission 선언 제출 | 마감 `2026-07-31 10:00 KST`. `SCPC2026_R2_MISSION_rev4.docx` 최신, PDF 변환·비공개 게시 확인 필요 |
+| Mission 선언 제출 | **제출 완료·사용자 동결.** 기준 파일 `SCPC2026_R2_MISSION_First_penguin.pdf`; Dacon의 `MISSION_LOCK.json` 수령 대기 |
 
 소스 규모: main 21파일 6,825줄 / JVM 테스트 10파일 3,267줄 / 기기 테스트 1파일 257줄.
 
@@ -110,27 +110,161 @@ platform/               Android 저장소·evidence 파일·release identity
   어절을 순서대로 매칭하며 사이 간격을 허용한다(지시문 2자, 리뷰 4자). 조사 변형을 나열하지 않아도 된다.
 - `PreferenceIntake`가 model 구현체 교체 지점이다. 현재 `modelConfigured=false`, inference 0회.
 
+### 주문 초안 범위 — 개인 사용자·한 식당·여러 주문 항목
+
+> **2026-07-31 제품 결정:** Mission의 사용자는 한 명으로 고정하되, 한 주문에서 같은 식당의 메뉴를
+> 하나 이상 담을 수 있게 한다. 단체주문·타인 취향 profile·다중 식당 장바구니·묶음 주문·분할 결제는
+> 제외한다.
+
+현재 코드는 `Slots.MAIN`에 대표 메뉴 값 하나를 저장하므로 여러 대표 메뉴를 지원하지 않는다. 가격이
+있는 field를 나열하고 합산하는 기반은 재사용할 수 있지만, 다른 노트북에서 구현할 때 초안을
+`OrderDraft.items[]` 구조로 바꾸고 field 주소에 `line_item_id`를 포함해야 한다.
+
+- 한 주문은 정확히 한 `restaurant_id`를 가진다.
+- `OrderLine`은 `line_item_id`, `menu_id`, `menu_type_id`, `quantity`, option field를 가진다.
+- 같은 메뉴를 옵션만 다르게 두 번 담으면 서로 다른 `line_item_id`를 사용한다.
+- `line_item_id`는 현재 초안의 dependency·가격·재고·리뷰 원문 귀속용이며 장기 취향 key가 아니다.
+- 전역·메뉴 유형·식당/메뉴 취향은 동일 사용자의 각 주문 항목에 독립적으로 적용한다.
+- 현재 지시가 특정 항목인지 전체 호환 항목인지 불명확하면 자동 전파하지 않고 대상 메뉴를 묻는다.
+- 한 항목의 품절·삭제·옵션 변경은 그 항목과 총액만 다시 열고 다른 항목은 보존한다.
+- 최종 가상 주문 action은 전체 `order_id`와 정렬된 항목 snapshot에 대해 한 번만 commit한다.
+
 ### 리뷰와 평점
 
 리뷰 텍스트와 별점을 **다르게** 취급한다. 이 구분이 설계의 기억 계약(`EXPLICIT_STABLE` /
 `DELAYED_OUTCOME` / `RAW_HISTORY`)에 그대로 대응한다.
 
+> **2026-07-31 제품 결정:** 아래 표의 "현재 구현"은 아직 이전 코드의 동작이다. 구현 목표는 명시적
+> 안정 취향을 `GLOBAL_DEFAULT`, `MENU_TYPE`, `RESTAURANT_MENU_OVERRIDE` 세 범위로 저장하고,
+> `식당·메뉴 > 메뉴 유형 > 전역` 순으로 주문 초안에 적용하는 것이다. 다른 노트북에서 구현할 때 이
+> 절과 아래 "승인된 주문·학습 흐름"을 기준으로 코드와 테스트를 함께 변경한다.
+
 | | 리뷰 텍스트의 option 언급 | 별점 |
 |---|---|---|
-| 무엇에 대한 말 | option 의미 (간 세기) | 그 식당의 그 메뉴 |
-| 저장 | 물어본 뒤 지연 outcome | 저장 안 함. `state.reviews`에서 파생 |
-| entity 경계 | entity 무관 (새 식당에 전달) | (식당, 메뉴) 고정 |
-| 영향 | option 값 제안, `ASK_BEFORE_APPLY` | **표시만. 순위 무개입** |
-| 두 arm | ASPR | 공통 |
+| 무엇에 대한 말 | 사용자가 지정한 주문 항목의 option 의미 (간 세기) | 사용자가 지정한 식당·메뉴 |
+| 목표 저장 | 승인 전 `RAW_HISTORY`와 후보, 승인 후 선택한 범위의 `EXPLICIT_STABLE` + permission | `state.reviews`에서 `(식당, 메뉴)`별 파생 |
+| 목표 entity 경계 | `GLOBAL_DEFAULT`, `MENU_TYPE`, 정확한 `(식당, 메뉴, option slot)` 중 사용자 승인 범위 | 정확한 `(식당, 메뉴)` |
+| 목표 영향 | 범위가 일치하는 주문 초안에서 specificity 순으로 적용 | 식당·메뉴 후보 추천 순위의 근거 |
+| 현재 구현 | 동의 후 entity 무관 지연 outcome, 다음 주문에서 재확인 | **표시만. 순위 무개입** |
 
-- 리뷰만으로는 아무것도 저장되지 않는다. 사용자가 `참고할게요`를 눌러야 지연 outcome이 예약되고,
-  도착해도 자동 적용되지 않는다. "한 그릇 감상 → 모든 미래 주문"은 설계가 금지한 과도한 일반화다.
-- 리뷰를 지우면 원문·예약된/도착한 outcome·그에 의존한 field까지 사라지고 tombstone만 남는다.
-  재시작하고 시간이 또 흘러도 부활하지 않는다.
-- 평점은 **표시 전용**이다. 순위에 넣으면 (a) VIL 이득이 mechanism 아닌 것에서 나와 C3 귀속이 깨지고,
-  (b) 원시 기록의 무허가 적용이 된다. 나쁜 평점도 후보를 차단하지 않는다 — 차단은 예산·시간·품절 같은
-  확정 사실에만 쓴다.
+- 리뷰 문구만으로는 아무것도 자동 적용하지 않는다. 앱은 “이 식당의 이 메뉴는 다음부터 `덜 맵게`를
+  초안에 적용할까요?”처럼 값·식당·메뉴·자동 적용 범위를 명시해 묻는다.
+- 주문 항목이 하나면 평가 대상을 그 메뉴로 미리 연결한다. 여러 메뉴면 사용자가 메뉴를 먼저 선택하거나
+  리뷰에서 대상을 명확히 지정해야 한다. 대상이 모호하면 평점을 추천에 반영하거나 리뷰 후보를 취향으로
+  저장하지 않고 메뉴부터 확인한다.
+- 리뷰 승인 시 `이 식당·메뉴만`, `모든 식당의 같은 메뉴 유형`, `모든 메뉴`, `저장하지 않음` 중
+  적용 범위를 명시한다. 동의한 범위의 stable fact만 만들고 다른 범위는 바꾸지 않는다.
+- 예: 전역 `매운맛`, 메뉴 유형 `떡볶이 → 보통맛`, 특정 `다온분식 + 불떡볶이 → 덜 맵게`.
+- 동일 slot의 초안 적용 우선순위는
+  `현재 주문 직접 지시 > 현재 정정·철회·삭제 > 식당·메뉴 override > MENU_TYPE > 전역 기본 취향 >
+  ASK`다. 같은 범위 안에서는 더 높은 authority가 이긴다.
+- scoped override는 정확히 같은 식당·메뉴에서만 사용한다. 리뷰 하나를 해당 식당의 모든 메뉴나 다른
+  식당으로 확대하지 않는다. 범위를 넓히려면 별도의 명시적 승인을 받는다.
+- `MENU_TYPE`은 메뉴 표시 이름이 아니라 catalog가 각 메뉴에 부여한 안정적인 `menu_type_id`로
+  연결한다. A식당과 C식당의 메뉴가 같은 `menu_type_id`이고 option semantic이 호환될 때만 식당을
+  넘어 재사용한다.
+- 현재 catalog에 저장된 option이 없거나 의미 mapping이 불확실하면 자동 대체하지 않고 그 field만
+  `ASK`로 연다.
+- 리뷰를 지우면 연결된 후보와 review-derived scoped override도 제거하고 tombstone만 남긴다. 사용자가
+  별도로 같은 값을 독립 취향으로 재확인한 경우에만 리뷰와 분리된 fact로 유지할 수 있다.
+- 평점은 사용자의 자기 기록만 사용하며 해당 `(식당, 메뉴)` 후보의 추천 근거로 반영한다. 표본 수가
+  적을 때 한 번의 평점이 순위를 과도하게 움직이지 않도록 count-aware smoothing을 사용하고, 평점은
+  예산·시간·품절 같은 hard constraint나 자동 옵션 적용 근거로 사용하지 않는다.
 - 라벨은 **"내 평점"** 이다. 공개 평점으로 오해되지 않게 한다.
+
+### 승인된 주문·학습 흐름 — 다른 노트북 구현 기준
+
+1. 사용자의 자연어 질의를 구조화된 현재 조건으로 해석한다.
+2. 전체 합성 catalog에서 조건·전역 취향·메뉴 유형 취향·식당/메뉴 취향·내 평점을 근거로 후보를 만든다.
+3. 첫 후보 선택으로 식당을 확정하고, 사용자가 같은 식당의 메뉴를 하나 이상 주문 항목으로 추가하면
+   항목별 메뉴·수량·옵션을 포함한 주문 초안을 만든다.
+4. 각 주문 항목의 옵션값은
+   `이번 주문 직접 지시 > 식당·메뉴 override > MENU_TYPE > 전역 기본 취향` 순서로 해석한다.
+5. 저장값이 없거나 무효·미허용·catalog 불일치이면 해당 항목만 수동 선택으로 남긴다.
+6. 사용자는 채워진 값도 이번 주문에 한해 수정할 수 있으며, 이 값은 stable fact를 덮어쓰지 않는다.
+7. 모든 주문 항목의 필수 field와 주문 전체의 최종 확인이 끝난 경우에만 app-local 가상 주문 action을
+   한 번 기록한다.
+8. 주문 뒤 평가 요청을 표시하고 사용자가 평점과 리뷰를 입력한다.
+9. 주문 항목이 하나면 해당 메뉴를 평가 대상으로 연결하고, 여러 항목이면 사용자가 평가할 메뉴를
+   선택하게 한다. 평점은 동일 `(식당, 메뉴)`의 이후 추천에 사용한다.
+10. 대상 메뉴가 확정된 리뷰에서 option 취향 후보를 찾으면 값과 세 범위를 보여주고 저장·자동 적용
+    여부를 묻는다.
+11. 동의한 후보만 선택한 범위의 stable fact로 저장해 이후 일치하는 초안에 적용한다.
+
+현재 코드에서 반드시 바뀌어야 하는 지점:
+
+- `MainActivity.onSend`: 식당이 없을 때 `daon`을 고정하지 말고 전체 식당·메뉴 후보를 제시
+- `Recommender`: 현재 식당 내부 메뉴 순위뿐 아니라 식당·메뉴 쌍 후보와 내 평점 근거 지원
+- catalog: 식당별 메뉴에 문자열 label과 별개인 안정적인 `menu_type_id`와 option semantic mapping 추가
+- draft state/core: 단일 `Slots.MAIN` 값을 `OrderDraft.items[]`로 교체하고, 각 field·dependency·가격
+  line에 안정적인 `line_item_id` 포함
+- draft command: 같은 식당의 메뉴 추가·제거·수량 변경과 특정 항목/전체 호환 항목 대상 옵션 변경 지원
+- pricing/recovery: 항목별 소계와 주문 총액을 분리하고 한 항목의 품절·삭제가 다른 항목을 무효화하지
+  않는 descendant invalidation 지원
+- commit/restart: 정렬된 주문 항목 snapshot을 한 action에 묶고 process 재실행·replay 뒤 중복 commit 방지
+- preference state/core: 세 scope level과 specificity precedence, 범위를 포함한 fact ID 추가
+- review acceptance: `scheduleOutcome` 대신 명시 승인된 scoped stable fact와 permission 생성
+- draft UI: 주문 항목 카드의 추가·제거·수량·옵션 control과 이미 채워진 값을 이번 주문만 수정하는
+  control 제공
+- review UI: 평가 대상 action·`line_item_id`·식당·메뉴를 명확히 연결하고 현재 session의 주문 이후에만
+  표시
+- 기존 `RatingDisplayTest`의 “순위를 바꾸지 않음” 계약을 새 ranking 계약으로 교체
+- `ReviewMemoryTest`에 전역 보존, 같은 쌍 override, 같은 menu type의 식당 간 전달, 다른 menu type
+  비전파, 삭제·재실행 부활 차단 추가
+- 새 다중 항목 테스트에 같은 식당의 두 메뉴, 같은 메뉴의 서로 다른 옵션 두 항목, 항목별 취향 적용,
+  한 항목 품절·삭제 뒤 다른 항목 보존, 총액 재계산, 모호한 리뷰 대상 확인, 재실행 뒤 단일 commit 추가
+
+#### 세 범위의 저장 key 계약
+
+```text
+PreferenceKey(
+  slotId,
+  scopeLevel,       // GLOBAL_DEFAULT | MENU_TYPE | RESTAURANT_MENU_OVERRIDE
+  menuTypeId?,      // MENU_TYPE에서만 필수
+  restaurantId?,    // RESTAURANT_MENU_OVERRIDE에서만 필수
+  menuId?,          // RESTAURANT_MENU_OVERRIDE에서만 필수
+)
+```
+
+`factId`와 tombstone ID는 이 key 전체를 포함해야 같은 slot에 세 범위의 값을 동시에 보존할 수 있다.
+`ReviewRecord`는 파생된 value token만이 아니라 생성한 scoped fact ID를 연결해야 리뷰 삭제 시 정확한
+descendant만 제거할 수 있다. 범위별 permission도 같은 key를 사용하며, 한 범위의 철회가 다른 범위의
+취향이나 permission을 지우면 안 된다.
+
+#### 주문 항목 key 계약
+
+```text
+OrderDraft(
+  orderId,
+  restaurantId,
+  items: List<OrderLine>,
+  orderLevelFields,
+  total,
+  status,
+)
+
+OrderLine(
+  lineItemId,       // 현재 초안 안에서 불변인 고유 ID
+  menuId,
+  menuTypeId,
+  quantity,
+  optionFields,     // field key에 lineItemId + slotId 포함
+  subtotal,
+  catalogVersion,
+)
+```
+
+- `lineItemId`는 배열 위치나 `menuId`로 만들지 않는다. 항목 순서 변경과 같은 메뉴 중복에도 안정적이어야
+  한다.
+- 저장 취향의 `PreferenceKey`에는 `lineItemId`를 넣지 않는다. 취향은 다음 주문의 새 항목에도
+  재사용되어야 하기 때문이다.
+- 현재 주문 one-off 지시는 대상 `lineItemId` 집합을 가질 수 있다. 전체 적용은 사용자가 명시하고 option
+  의미가 호환되는 항목에만 허용한다.
+- 항목 삭제 tombstone은 현재 `orderId + lineItemId`에만 적용하며 메뉴에 대한 장기 취향을 삭제하지 않는다.
+- `ReviewRecord`는 `orderId`, `actionId`, `lineItemId`, `restaurantId`, `menuId`를 함께 보존한다. 여러
+  항목 중 대상이 확정되지 않은 리뷰는 후보 상태로만 두고 평점 ranking이나 stable fact를 만들지 않는다.
+- action idempotency key에는 정렬된 `lineItemId`와 각 항목의 현재 version/digest를 포함하거나 그 전체
+  snapshot의 digest를 사용한다. 배열 순서만 달라져 다른 주문으로 취급되면 안 된다.
 
 ## 합성 데이터 (`app/src/main/assets/synthetic/catalog.json`, schema 2)
 
@@ -235,7 +369,8 @@ CII **C2(3점)가 "불필요한 복잡성 부재"** 이고, `PERSONAL_DELIVERY_A
 3. 합성 인기도라도 "새 식당에서 유효한 개인 취향 재사용으로 확인이 줄어든다"는 인과 서사와 경쟁한다.
    인기 있지만 현재 조건에 안 맞는 메뉴가 올라오면 우리가 고쳤다고 주장하는 실패 모드를 시연하게 된다.
 
-대신 **"내 평점"** 을 표시 전용으로 넣었다.
+타인의 평점은 계속 제외한다. **"내 평점"** 은 현재 코드에서는 표시 전용이지만, 승인된 제품 목표에서는
+동일 `(식당, 메뉴)` 후보의 추천 근거로만 사용한다. 자동 옵션 적용이나 hard constraint에는 사용하지 않는다.
 
 ## 협업 규칙
 
@@ -268,4 +403,5 @@ CII **C2(3점)가 "불필요한 복잡성 부재"** 이고, `PERSONAL_DELIVERY_A
 | 2026-07-30 | 자연어 입력·결정적 추천 추가. JVM 75개 |
 | 2026-07-30 | 채팅 UI 배선. 질문에 탭으로 답하는 흐름 |
 | 2026-07-30 | 평가·리뷰와 "기억할까요" 흐름, 어절 gapped 매칭. JVM 87개 |
-| 2026-07-30 | 내 평점 표시(순위 무개입). 다른 사용자 평점은 하지 않기로 결정. JVM 97개 |
+| 2026-07-30 | 내 평점 표시(당시 순위 무개입) 구현. 이후 제품 결정으로 동일 식당·메뉴 추천 근거 반영은 구현 대기. JVM 97개 |
+| 2026-07-31 | 개인 사용자·한 식당 범위를 유지하면서 단일 대표 메뉴를 `OrderDraft.items[]`로 확장하기로 결정. 단체주문·타인 profile·다중 식당은 제외하고 line별 취향·부분복구·리뷰 귀속·idempotency 구현 계약 추가 |

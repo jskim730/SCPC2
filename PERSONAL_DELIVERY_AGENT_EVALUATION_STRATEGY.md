@@ -2,14 +2,16 @@
 
 ## 문서 상태
 
-- 상태: `DECISION_DRAFT_NOT_MISSION_LOCKED`
+- 상태: `MISSION_SUBMITTED_USER_FROZEN_PENDING_OFFICIAL_LOCK`
 - 작성일: `2026-07-29 KST`
 - 구현 상태: 시작하지 않음
 - 선행 문서: `PERSONAL_DELIVERY_AGENT_UX_SPEC.md`
 - 공식 기준: `COMPETITION_CONTEXT.md`, `release_v3/candidate_kit/`
 
-이 문서는 Mission 제출 전 검토용 결정안이다. 사용자가 승인하기 전에는 Mission을 동결하거나 Android
-구현을 시작하지 않는다.
+Mission 선언은 `2026-07-31 KST`에 제출되었으며 사용자가 최종본으로 확정했다. 동결된 내용의 기준은
+`SCPC2026_R2_MISSION_First_penguin.pdf`이고, 이 문서는 구현·평가 설계를 구체화하는
+협업 문서다. Dacon이 제공하는 `MISSION_LOCK.json`을 수령하면 제출 PDF와 대조하고 공식 동결
+정보에는 그 파일을 따른다.
 
 ---
 
@@ -89,7 +91,7 @@ Mission PDF에서는 약어보다 한글 설명을 먼저 쓴다.
           │
           ▼
 1. 현재 목표와 무관한 기억 제외
-2. current > correction/revoke/delete > stable > outcome > inferred 순으로 활성 fact 선택
+2. current > correction/revoke/delete > 식당·메뉴별 stable > 메뉴 유형 stable > 전역 stable > outcome > inferred 순으로 활성 fact 선택
 3. 활성 fact를 현재 식당의 option 의미에 대응
 4. 확실한 값은 적용하고, 모호하거나 권한이 부족한 값은 ASK
 5. 각 주문 필드에 사용된 fact·catalog version의 dependency 기록
@@ -114,6 +116,9 @@ ScopeKey(
   subject,
   domain,        // preference | permission | request | catalog
   entity_class,  // food-category | option-semantic | restaurant | menu
+  scope_level,   // GLOBAL_DEFAULT | MENU_TYPE | RESTAURANT_MENU_OVERRIDE
+  menu_type_id,  // MENU_TYPE에서 쓰는 catalog-authored semantic ID
+  entity_ids,    // RESTAURANT_MENU_OVERRIDE의 정확한 (restaurant_id, menu_id)
   slot,          // spiciness | utensil | saltiness | side | ...
   usage,         // rank | ask-before-apply | auto-apply
   lifetime       // stable | session | catalog-version | deleted
@@ -123,9 +128,43 @@ ScopeKey(
 core는 문자열 `AUTO_APPLY_UTENSIL`처럼 공개 예시의 뜻을 추측하지 않는다. preceding fact가 어떤
 `scope_id`에 속했는지와 revoke·preserve 입력이 가리키는 ID 관계만 처리한다.
 
+한 주문은 한 명의 사용자와 한 식당에 귀속되며 하나 이상의 주문 항목을 가질 수 있다. 초안의 항목
+주소는 다음처럼 취향 저장 key와 분리한다.
+
+```text
+OrderDraft(
+  order_id,
+  restaurant_id,
+  items: [
+    OrderLine(
+      line_item_id,
+      menu_id,
+      menu_type_id,
+      quantity,
+      option_fields
+    )
+  ],
+  order_level_fields,
+  total
+)
+```
+
+`line_item_id`는 같은 메뉴를 옵션만 다르게 여러 번 담아도 각 항목의 현재 선택과 dependency를 구분하는
+초안 내부 ID다. 장기 취향은 `line_item_id`에 저장하지 않고, 아래 세 scope level의
+`(slot_id, menu_type_id?, restaurant_id?, menu_id?)` key에 저장한다. 단체주문·타인 profile·다중 식당
+장바구니는 이 Mission의 범위가 아니다.
+
+명시적 안정 취향에는 `GLOBAL_DEFAULT`, `MENU_TYPE`, `RESTAURANT_MENU_OVERRIDE` 세 specificity
+level을 둔다. 주문 초안은 현재 사용자의 직접 지시를 먼저 적용하고, 그다음 정확히 일치하는
+`(restaurant_id, menu_id, slot_id)` override, catalog-authored `(menu_type_id, slot_id)` 취향, 같은
+slot의 전역 기본 취향 순으로 적용한다. 메뉴 이름 문자열이나 fuzzy matching만으로 `MENU_TYPE`을
+동일시하지 않는다. 리뷰에서 얻은 문구는 바로 stable fact가 되지 않으며, 사용자가 적용 범위와 자동
+적용을 명시적으로 승인한 경우에만 선택한 scope level의 stable fact로 승격한다.
+
 ### draft dependency
 
-각 주문 field는 다음 dependency edge를 가진다.
+각 주문 field는 `line_item_id`를 포함한 주소를 가지며 다음 dependency edge를 가진다. 예산·희망시간
+같은 현재 조건과 최종 총액은 주문 전체 field로 둔다.
 
 - `HARD_VALUE`: 값이 그 fact에 의존하며 fact 무효화 시 field도 무효화
 - `RANKING`: 추천 순위 근거이며 무효화 시 점수·근거만 재계산
@@ -141,7 +180,8 @@ core는 문자열 `AUTO_APPLY_UTENSIL`처럼 공개 예시의 뜻을 추측하�
 | future reuse stable fact 정정 | 이전 fact와 그 fact에 의존하는 현재 미확정 `HARD_VALUE`·`RANKING` descendant | 이미 완료된 과거 주문 ledger, 다른 scope의 메뉴·option |
 | permission revoke | 해당 `PERMISSION` edge와 미확인 자동 적용 상태 | 취향 fact 원문, 다른 permission, 별도 사용자 확인값 |
 | ephemeral fact 삭제 | 원문과 그 fact에만 의존한 draft field·provenance | 독립적인 메뉴·option·총액 구성요소 |
-| side stock version 변경 | side line, side 가격, 그 descendant인 총액 | main line, main option, 현재 사용자 조건 |
+| 한 주문 항목의 stock/version 변경 | 해당 `line_item_id`의 메뉴·가격·영향받은 option과 descendant인 총액 | 다른 주문 항목·현재 사용자 조건 |
+| 한 주문 항목 삭제 | 해당 `line_item_id`의 field·가격·provenance와 descendant인 총액 | 다른 주문 항목·장기 취향 |
 | catalog 전체 stale | catalog-dependent commit 가능 상태 | 입력·기억·이미 만든 draft와 provenance |
 | current explicit correction | 충돌하는 과거 fact와 같은 scope의 draft descendant | 충돌하지 않는 stable fact와 다른 scope |
 
@@ -237,7 +277,7 @@ comparison은 AUTO-CHECK와 별도다. Dacon OPS·Judge가 볼 수 있는 compar
 다음 각각을 1 field-resolution event로 센다.
 
 - clarification에 대한 사용자 응답
-- 메뉴·옵션·수량을 직접 선택하거나 다시 선택
+- 주문 항목별 메뉴·옵션·수량을 직접 선택하거나 다시 선택
 - 잘못 적용된 값을 정정
 - 변화 뒤 유효했지만 사라진 항목을 다시 입력
 - 최종 주문 초안 확인
@@ -245,6 +285,10 @@ comparison은 AUTO-CHECK와 별도다. Dacon OPS·Judge가 볼 수 있는 compar
 초기 자연어 요청은 양쪽에 동일하게 주어지므로 세지 않는다. 화면을 읽는 행위, 에이전트 내부 계산,
 자동 적용 항목의 provenance 표시는 세지 않는다. 최종 확인은 양쪽 모두 반드시 1회 센다. 각 event는
 `open_confirmation_ids`와 사용자 응답 fact를 연결한 decision ledger에서 파생한다.
+
+여러 메뉴가 있는 비교에서는 `full`과 `claim-off`에 동일한 식당·동일한 주문 항목 목록·동일한
+`line_item_id`·동일한 현재 지시를 제공한다. 항목 수가 늘어난 자체를 ASPR의 이득으로 세지 않고, 각
+항목에서 기억 재사용 또는 부분복구로 줄어든 field-resolution event만 비교한다.
 
 ### 유효성 guardrail
 
@@ -290,17 +334,22 @@ comparison은 AUTO-CHECK와 별도다. Dacon OPS·Judge가 볼 수 있는 compar
 
 ### E1 — Learn
 
-사용자는 “2만원 이하, 따뜻한 국물, 순한맛”이라는 현재 목표로 첫 합성 주문 초안을 만든다. 순한맛과
-수저·밥 양처럼 지시에 없는 항목은 추측하지 않고 질문한다. 답을 확인한 뒤 순한맛·일회용 수저 제외·
-밥 양 보통을 안정 취향으로 저장하되 각각의 재사용·자동 적용 범위를 확인한다. 이후 virtual time에
-“국물 간이 조금 셌다”는 scoped delayed outcome이 도착한다.
+사용자는 “2만원 이하, 따뜻한 국물, 순한맛”이라는 현재 목표로 첫 합성 주문 초안을 만든다. 맵기와
+수저·밥 양처럼 반복 사용할 항목은 추측하지 않고 질문한다. 답을 확인한 뒤 순한맛·일회용 수저 제외는
+전역 기본 취향으로, 밥 양 보통은 catalog의 국물 `menu_type_id` 취향으로 저장하되 각각의 재사용·자동
+적용 범위를 확인한다. 주문 뒤 virtual
+time에 평가 요청이 도착하고, “이 식당의 이 메뉴는 간이 너무 셌다”는 리뷰에서 `간 약하게` 후보를
+찾는다. 사용자가 해당 식당·메뉴에 다음부터 자동 적용하도록 동의한 경우에만 scoped stable
+override로 승격한다.
 
 ### E2 — Reuse
 
-새 식당·새 option 표현과 “1만8천원 이하, 30분 이내”라는 현재 조건에서 E1의 순한맛·수저 권한을
-선택적으로 재사용하고, 간이 셌다는 결과는 국물 간 option과 추천 순위에만 반영한다. 다른 식당의
-메뉴명과 무관한 option은 복사하지 않는다. 더 최근이더라도 다른 식당·목표의 distractor는 선택하지
-않는다. 이때 질문·재입력이 E1과 `claim-off`보다 줄어든다.
+새 식당·새 option 표현과 “1만8천원 이하, 30분 이내”라는 현재 조건에서는 E1의 전역 기본 취향·수저
+권한과, catalog의 `menu_type_id`가 같을 때 밥 양 보통 취향을 선택적으로 재사용한다. E1의 식당·메뉴별
+`간 약하게` override는 대상 쌍이 다르므로 제외한다.
+더 최근이더라도 다른 식당·목표의 distractor는 선택하지 않는다. 주문 뒤 지연 평가 요청에서 식당 B의
+선택 메뉴에 대한 옵션 리뷰를 남기고, 사용자가 범위와 자동 적용을 승인하면 식당 B·선택 메뉴 scoped
+override를 만든다. 이때 질문·재입력이 E1과 `claim-off`보다 줄어든다.
 
 ### E3 — Exception
 
@@ -322,8 +371,8 @@ tombstone만 남겨 재실행 뒤에도 부활하지 않게 한다. E3에서 자
 
 ### 뒤 episode를 실제로 바꾸는 원인
 
-1. E1의 stable 순한맛과 permission → E2 새 option 대응과 질문 감소
-2. E1의 delayed saltiness outcome → E2 추천 순위·간 option 변경
+1. E1의 전역 순한맛·메뉴 유형 밥 양과 permission → E2 새 식당의 option 대응과 질문 감소
+2. E2 리뷰에서 승인한 식당·메뉴별 override → E4의 같은 쌍 초안에서 전역 기본값을 재정의
 3. E3의 one-off → E3만 아주 매움, E4에서는 stable 순한맛 복귀
 4. E3의 utensil permission revoke → E4에서 수저를 다시 질문
 
@@ -342,7 +391,7 @@ event로 side branch만 재계산하고 main branch를 보존하는 관계는 Re
 | CORE-3 반복부담 | E2의 VIL·질문·재입력이 줄되 최종 확인과 불확실 option 질문은 유지 |
 | CORE-4 예외·회복 | option 의미가 모호하면 ASK, catalog가 지연되면 WAIT, 안전한 결정이 없으면 ABSTAIN, 품절이면 side만 replan |
 | CORE-5 restart reconciliation | 제안과 commit 사이 실제 kill 뒤 pending 상태 복원, duplicate action 방지, stale stock event 무시 |
-| CORE-6 delayed outcome·evidence | E1 saltiness outcome이 E2 판단을 바꾸고 fact→decision→action→outcome ledger가 화면·export와 일치 |
+| CORE-6 delayed outcome·evidence | E2 지연 평가 요청과 승인된 scoped override가 E4 판단을 바꾸고 fact→decision→action→outcome ledger가 화면·export와 일치 |
 
 ---
 
