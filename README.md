@@ -1,6 +1,7 @@
 # SCPC2
 
 SCPC 2026 AI Challenge 예선 2차용 Android 개인 배달 주문 에이전트 작업 저장소입니다.
+대회 공식 페이지 : https://dacon.io/competitions/official/236745/overview/description
 
 ## 저장소 구성
 
