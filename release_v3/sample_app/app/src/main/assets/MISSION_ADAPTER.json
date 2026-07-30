@@ -1,0 +1,115 @@
+{
+  "schema_version": "3.0.0-draft",
+  "artifact_kind": "mission_probe_adapter",
+  "role_bindings": {
+    "PRIMARY_GOAL": {
+      "mission_meaning": "공개 연습에서 현재 session이 달성하려는 합성 목표",
+      "production_state_field": "ProbeInputStep.roles.PRIMARY_GOAL",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].selected_context_ids"
+    },
+    "TARGET_ENTITY": {
+      "mission_meaning": "현재 fact·판단·삭제가 적용되는 합성 대상",
+      "production_state_field": "production_state_json.facts[fact-TARGET_ENTITY]",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].preserved_state_ids"
+    },
+    "DISTRACTOR_ENTITY": {
+      "mission_meaning": "현재 목표와 무관해 선택하면 안 되는 합성 대상",
+      "production_state_field": "ProbeInputStep.roles.DISTRACTOR_ENTITY",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].selected_context_ids"
+    },
+    "STABLE_VALUE": {
+      "mission_meaning": "session을 넘어 보존되는 합성 fact 값",
+      "production_state_field": "production_state_json.facts[*].value",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].state_after_sha256"
+    },
+    "ONE_OFF_VALUE": {
+      "mission_meaning": "현재 정정 또는 network 단계에만 적용되는 합성 값",
+      "production_state_field": "ProbeInputStep.roles.ONE_OFF_VALUE",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].state_after_sha256"
+    },
+    "CURRENT_AUTHORITY": {
+      "mission_meaning": "이전 fact보다 우선하는 현재 합성 지시",
+      "production_state_field": "production_state_json.facts[*].authority",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].invalidated_state_ids"
+    },
+    "REVOKED_SCOPE": {
+      "mission_meaning": "철회되어 production state에서 제거되는 합성 범위",
+      "production_state_field": "ProbeInputStep.roles.REVOKED_SCOPE",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].invalidated_state_ids"
+    },
+    "PRESERVED_SCOPE": {
+      "mission_meaning": "부분 철회 뒤에도 유지되는 합성 범위",
+      "production_state_field": "production_state_json.facts[*].scope",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].preserved_state_ids"
+    },
+    "DELAYED_OUTCOME": {
+      "mission_meaning": "시간 진행 뒤 도착해 다음 판단에 반영되는 합성 결과",
+      "production_state_field": "ProbeInputStep.roles.DELAYED_OUTCOME",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].decision_state"
+    },
+    "EPHEMERAL_VALUE": {
+      "mission_meaning": "삭제 뒤 원문이 되살아나면 안 되는 합성 값",
+      "production_state_field": "production_state_json.tombstones[*]",
+      "evidence_path": "PUBLIC_PROBE_RESULT.step_results[*].tombstone_ids"
+    }
+  },
+  "operation_bindings": {
+    "RESET_AND_START": {
+      "production_callback": "SampleCore.execute(RESET_AND_START)",
+      "observable_evidence": "facts·actions·receipt·evidence가 초기화된 state digest"
+    },
+    "UPSERT_FACT": {
+      "production_callback": "SampleCore.execute(UPSERT_FACT)",
+      "observable_evidence": "authority·scope·value가 저장된 fact ID"
+    },
+    "ADVANCE_SESSION": {
+      "production_callback": "SampleCore.execute(ADVANCE_SESSION)",
+      "observable_evidence": "새 session ID와 보존된 fact ID"
+    },
+    "REQUEST_DECISION": {
+      "production_callback": "SampleCore.execute(REQUEST_DECISION)",
+      "observable_evidence": "ACT·ASK·WAIT 결정과 선택된 context ID"
+    },
+    "CORRECT_FACT": {
+      "production_callback": "SampleCore.execute(CORRECT_FACT)",
+      "observable_evidence": "무효화된 이전 fact와 현재 authority가 적용된 fact"
+    },
+    "REVOKE_SCOPE": {
+      "production_callback": "SampleCore.execute(REVOKE_SCOPE)",
+      "observable_evidence": "철회된 범위의 fact와 보존된 fact ID"
+    },
+    "DELETE_FACT": {
+      "production_callback": "SampleCore.execute(DELETE_FACT)",
+      "observable_evidence": "삭제된 fact ID와 비가역 tombstone ID"
+    },
+    "SET_NETWORK": {
+      "production_callback": "SampleCore.execute(SET_NETWORK)",
+      "observable_evidence": "production state에 기록된 ONLINE·OFFLINE·DELAYED 상태"
+    },
+    "PROCESS_KILL_RELAUNCH": {
+      "production_callback": "SampleCore.execute(PROCESS_KILL_RELAUNCH)",
+      "observable_evidence": "재실행 뒤 증가한 process_epoch와 복구된 state digest"
+    },
+    "REPLAY_EVENT": {
+      "production_callback": "SampleCore.execute(REPLAY_EVENT)",
+      "observable_evidence": "기존 action의 idempotency·commit·outcome 기록"
+    },
+    "DELIVER_OUT_OF_ORDER": {
+      "production_callback": "SampleCore.execute(DELIVER_OUT_OF_ORDER)",
+      "observable_evidence": "PENDING 결정과 변경 뒤 production state digest"
+    },
+    "ADVANCE_TIME": {
+      "production_callback": "SampleCore.execute(ADVANCE_TIME)",
+      "observable_evidence": "진행된 virtual time과 다음 판단 상태"
+    },
+    "EXPORT_AND_END": {
+      "production_callback": "SampleCore.execute(EXPORT_AND_END)",
+      "observable_evidence": "최종 state·receipt·evidence ID와 result digest"
+    }
+  },
+  "source_paths": [
+    "app/src/main/java/org/scpc/r2/sample/SampleProbeAdapter.kt",
+    "app/src/main/java/org/scpc/r2/sample/SampleCore.kt",
+    "app/src/main/assets/MISSION_ADAPTER.json"
+  ]
+}

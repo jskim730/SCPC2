@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scpc.example/contracts/r2-v3/mission-adapter.schema.json",
+  "title": "SCPC R2 v3 Mission probe adapter",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_kind",
+    "role_bindings",
+    "operation_bindings",
+    "source_paths"
+  ],
+  "properties": {
+    "schema_version": {"const": "3.0.0-draft"},
+    "artifact_kind": {"const": "mission_probe_adapter"},
+    "role_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PRIMARY_GOAL",
+        "TARGET_ENTITY",
+        "DISTRACTOR_ENTITY",
+        "STABLE_VALUE",
+        "ONE_OFF_VALUE",
+        "CURRENT_AUTHORITY",
+        "REVOKED_SCOPE",
+        "PRESERVED_SCOPE",
+        "DELAYED_OUTCOME",
+        "EPHEMERAL_VALUE"
+      ],
+      "properties": {
+        "PRIMARY_GOAL": {"$ref": "#/$defs/binding"},
+        "TARGET_ENTITY": {"$ref": "#/$defs/binding"},
+        "DISTRACTOR_ENTITY": {"$ref": "#/$defs/binding"},
+        "STABLE_VALUE": {"$ref": "#/$defs/binding"},
+        "ONE_OFF_VALUE": {"$ref": "#/$defs/binding"},
+        "CURRENT_AUTHORITY": {"$ref": "#/$defs/binding"},
+        "REVOKED_SCOPE": {"$ref": "#/$defs/binding"},
+        "PRESERVED_SCOPE": {"$ref": "#/$defs/binding"},
+        "DELAYED_OUTCOME": {"$ref": "#/$defs/binding"},
+        "EPHEMERAL_VALUE": {"$ref": "#/$defs/binding"}
+      }
+    },
+    "operation_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "RESET_AND_START",
+        "UPSERT_FACT",
+        "ADVANCE_SESSION",
+        "REQUEST_DECISION",
+        "CORRECT_FACT",
+        "REVOKE_SCOPE",
+        "DELETE_FACT",
+        "SET_NETWORK",
+        "PROCESS_KILL_RELAUNCH",
+        "REPLAY_EVENT",
+        "DELIVER_OUT_OF_ORDER",
+        "ADVANCE_TIME",
+        "EXPORT_AND_END"
+      ],
+      "properties": {
+        "RESET_AND_START": {"$ref": "#/$defs/operationBinding"},
+        "UPSERT_FACT": {"$ref": "#/$defs/operationBinding"},
+        "ADVANCE_SESSION": {"$ref": "#/$defs/operationBinding"},
+        "REQUEST_DECISION": {"$ref": "#/$defs/operationBinding"},
+        "CORRECT_FACT": {"$ref": "#/$defs/operationBinding"},
+        "REVOKE_SCOPE": {"$ref": "#/$defs/operationBinding"},
+        "DELETE_FACT": {"$ref": "#/$defs/operationBinding"},
+        "SET_NETWORK": {"$ref": "#/$defs/operationBinding"},
+        "PROCESS_KILL_RELAUNCH": {"$ref": "#/$defs/operationBinding"},
+        "REPLAY_EVENT": {"$ref": "#/$defs/operationBinding"},
+        "DELIVER_OUT_OF_ORDER": {"$ref": "#/$defs/operationBinding"},
+        "ADVANCE_TIME": {"$ref": "#/$defs/operationBinding"},
+        "EXPORT_AND_END": {"$ref": "#/$defs/operationBinding"}
+      }
+    },
+    "source_paths": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    }
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mission_meaning", "production_state_field", "evidence_path"],
+      "properties": {
+        "mission_meaning": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "production_state_field": {"type": "string", "minLength": 1, "maxLength": 256},
+        "evidence_path": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "operationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_callback", "observable_evidence"],
+      "properties": {
+        "production_callback": {"type": "string", "minLength": 1, "maxLength": 256},
+        "observable_evidence": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "schema_version": "3.0.0-draft",
+  "artifact_kind": "mission_probe_adapter",
+  "role_bindings": {
+    "PRIMARY_GOAL": {
+      "mission_meaning": "현재 조건과 유효한 취향에 맞는 합성 개인 배달 주문 초안 완성. goal이 바뀌면 다른 goal에 묶인 fact는 선택되지 않는다.",
+      "production_state_field": "ProductionState.goalId",
+      "evidence_path": "evidence/state/current_goal.json"
+    },
+    "TARGET_ENTITY": {
+      "mission_meaning": "현재 합성 식당과 그 메뉴·option schema를 묶은 주문 대상. entity에 묶인 fact와 catalog line version의 기준이다.",
+      "production_state_field": "ProductionState.targetEntityId",
+      "evidence_path": "evidence/state/context_selection.json"
+    },
+    "DISTRACTOR_ENTITY": {
+      "mission_meaning": "다른 목표나 식당에 속해 현재 주문 판단에서 제외해야 하는 과거 대상. 더 최근 authority여도 선택되지 않는다.",
+      "production_state_field": "ProductionState.distractorEntityIds",
+      "evidence_path": "evidence/state/context_selection.json"
+    },
+    "STABLE_VALUE": {
+      "mission_meaning": "여러 주문 session에서 재사용하도록 사용자가 명시한 안정 취향. preserved scope가 있으면 자동 적용이 허용된 option semantics다.",
+      "production_state_field": "ProductionState.facts[kind=STABLE].value",
+      "evidence_path": "evidence/state/facts.json"
+    },
+    "ONE_OFF_VALUE": {
+      "mission_meaning": "현재 주문 session에만 적용되고 새 session에서 만료되는 조건. 같은 slot의 안정 취향보다 현재 session에서 우선하지만 그 원문을 바꾸지 않는다.",
+      "production_state_field": "ProductionState.facts[kind=ONE_OFF].value",
+      "evidence_path": "evidence/state/facts.json"
+    },
+    "CURRENT_AUTHORITY": {
+      "mission_meaning": "과거 값보다 우선하는 가장 최근 사용자 지시 또는 정정 version. 불투명 token을 처음 본 순서로 monotonic version에 사상하며 철자를 해석하지 않는다.",
+      "production_state_field": "ProductionState.authorityTokens, Fact.authorityVersion",
+      "evidence_path": "evidence/state/authority.json"
+    },
+    "REVOKED_SCOPE": {
+      "mission_meaning": "취향 원문과 분리하여 철회한 자동 적용 permission scope. 철회 뒤 해당 미확정 field만 다시 묻는다.",
+      "production_state_field": "ProductionState.revokedScopes",
+      "evidence_path": "evidence/state/invalidation.json"
+    },
+    "PRESERVED_SCOPE": {
+      "mission_meaning": "정정·철회·품절 뒤에도 유효해 보존되는 주문 field scope. 이 scope가 명시되면 fact는 entity에 묶이지 않고 새 식당에서도 재사용·자동 적용된다.",
+      "production_state_field": "Fact.scopeIds, DraftField.deps[kind=PERMISSION]",
+      "evidence_path": "evidence/state/recovery.json"
+    },
+    "DELAYED_OUTCOME": {
+      "mission_meaning": "virtual time 뒤 도착해 다음 추천 또는 주문 판단을 바꾸는 만족도나 catalog 결과. app-local 정본에 정확히 한 번 기록되고 permission 상태와 무관하다.",
+      "production_state_field": "ProductionState.pendingOutcomes, ProductionState.appliedOutcomes",
+      "evidence_path": "evidence/ledger/outcomes.json"
+    },
+    "EPHEMERAL_VALUE": {
+      "mission_meaning": "현재 초안에 사용되지만 삭제 뒤 원문과 파생 field가 부활하면 안 되는 합성 일회성 요청사항. 개인정보는 넣지 않는다.",
+      "production_state_field": "ProductionState.facts[kind=EPHEMERAL].value",
+      "evidence_path": "evidence/state/deletion.json"
+    }
+  },
+  "operation_bindings": {
+    "RESET_AND_START": {
+      "production_callback": "ProductionCore.execute -> resetAndStart",
+      "observable_evidence": "새 run ID, decision·invocation counter 0, clean active state, 그리고 audit archive에 보존된 이전 run terminal snapshot digest"
+    },
+    "UPSERT_FACT": {
+      "production_callback": "ProductionCore.execute -> upsertFact -> storeFactsFrom",
+      "observable_evidence": "source·authority version·scope·lifetime·permission을 가진 typed fact event, before/after state digest, tombstone보다 낮은 authority일 때의 거부 기록"
+    },
+    "ADVANCE_SESSION": {
+      "production_callback": "ProductionCore.execute -> openSessionIfNeeded, advanceSession",
+      "observable_evidence": "새 internal session key, 만료된 one-off fact ID, 보존된 stable fact ID, 새 주문 초안"
+    },
+    "REQUEST_DECISION": {
+      "production_callback": "ProductionCore.execute -> requestDecision (AsprEngine.project, commitDraft)",
+      "observable_evidence": "ACT·ASK·WAIT·ABSTAIN 상태, selected와 excluded context ID, deterministic open_confirmation_ids, 그리고 초안 identity당 한 번만 생성되는 action과 idempotency key"
+    },
+    "CORRECT_FACT": {
+      "production_callback": "ProductionCore.execute -> correctFact (AsprEngine.invalidateDescendants)",
+      "observable_evidence": "증가한 authority version, HARD_VALUE·RANKING dependency를 따라 무효화된 미확정 field ID, 보존된 확정 field와 다른 scope의 fact ID"
+    },
+    "REVOKE_SCOPE": {
+      "production_callback": "ProductionCore.execute -> revokeScope",
+      "observable_evidence": "철회된 opaque scope ID, PERMISSION edge만 잃고 값은 남은 preference fact ID, 다시 확인 필요로 낮아진 field ID"
+    },
+    "DELETE_FACT": {
+      "production_callback": "ProductionCore.execute -> deleteFact",
+      "observable_evidence": "원문 fact 부재, 그 fact에 의존한 draft field·provenance 제거, 복원 불가능한 최소 tombstone ID"
+    },
+    "SET_NETWORK": {
+      "production_callback": "ProductionCore.execute -> setNetwork (networkPosture)",
+      "observable_evidence": "role 값 전체에서 읽은 ONLINE·OFFLINE·DELAYED·UNKNOWN 상태, catalog cache 여부, 기억과 초안을 보존한 채의 WAIT 또는 ABSTAIN"
+    },
+    "PROCESS_KILL_RELAUNCH": {
+      "production_callback": "ProductionCore.execute -> prepareForKill, reconcileProcess",
+      "observable_evidence": "kill 전 checkpoint digest, relaunch 뒤 증가한 process epoch, 미commit action을 완료로 표시하지 않은 pending 상태"
+    },
+    "REPLAY_EVENT": {
+      "production_callback": "ProductionCore.execute -> replayEvent",
+      "observable_evidence": "duplicate event 기록, 원본과 동일한 action ID·idempotency key, 추가 commit 0"
+    },
+    "DELIVER_OUT_OF_ORDER": {
+      "production_callback": "ProductionCore.execute -> deliverOutOfOrder",
+      "observable_evidence": "거부 사유와 incoming·current authority version, 삭제값·완료상태를 부활시키지 않고 보존된 current state ID"
+    },
+    "ADVANCE_TIME": {
+      "production_callback": "ProductionCore.execute -> advanceTime -> materialiseOutcome",
+      "observable_evidence": "진행한 virtual time, 정확히 한 번 materialize된 delayed outcome ID, 그 뒤 달라진 selected context와 제안 field"
+    },
+    "EXPORT_AND_END": {
+      "production_callback": "ProductionCore.execute -> exportAndEnd, exportEvidence",
+      "observable_evidence": "terminal state, step ID에 연결된 evidence와 receipt, fact·decision·action·outcome ledger, 열린 작업이 남았는지의 정직한 구분"
+    }
+  },
+  "source_paths": [
+    "app/src/main/java/com/scpc/deliveryagent/probe/ProductionProbeAdapter.kt",
+    "app/src/main/java/com/scpc/deliveryagent/core/ProductionCore.kt",
+    "app/src/main/java/com/scpc/deliveryagent/core/AsprEngine.kt",
+    "app/src/test/java/com/scpc/deliveryagent/core/ProbeOperationContractTest.kt",
+    "app/src/androidTest/java/com/scpc/deliveryagent/probe/ProbeParityTest.kt"
+  ]
+}

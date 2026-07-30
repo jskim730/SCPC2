@@ -1,0 +1,47 @@
+# Python environments and caches
+.venv/
+**/__pycache__/
+*.py[cod]
+
+# Android/Gradle local state and build outputs
+**/.gradle/
+**/.kotlin/
+**/build/
+**/local.properties
+.idea/
+*.iml
+
+# Local secrets and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# Generated rehearsal/runtime artifacts
+work/APP.apk
+work/PUBLIC_RUN/
+work/SAMPLE_EXPORT/
+work/**/*.tmp
+work/**/*.log
+
+# Submission artifacts generated from a frozen release
+SAMPLE_EXPORT/
+SOURCE.zip
+EXPORT_INDEX.json
+
+# Office temporary lock files
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+

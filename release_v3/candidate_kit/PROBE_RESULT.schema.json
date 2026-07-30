@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scpc.example/contracts/r2-v3/probe-result.schema.json",
+  "title": "SCPC R2 v3 probe result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_kind",
+    "probe_contract_profile",
+    "probe_pack_id",
+    "instance_id",
+    "request_nonce",
+    "candidate_id",
+    "mission_id",
+    "operator_run_token",
+    "run_id",
+    "probe_input_sha256",
+    "mission_adapter_sha256",
+    "release_binding",
+    "runtime_identity_start",
+    "runtime_identity_end",
+    "step_results",
+    "evidence_ids",
+    "result_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "3.0.0-draft"},
+    "artifact_kind": {"const": "scpc_probe_result"},
+    "probe_contract_profile": {
+      "const": "DACON_SIGNED_RUNNER_PROTECTED_COMPONENT_V3_DRAFT"
+    },
+    "probe_pack_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "instance_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "request_nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+    },
+    "candidate_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "mission_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "operator_run_token": {"type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$"},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "probe_input_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "mission_adapter_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "release_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_name",
+        "version_name",
+        "version_code",
+        "signing_certificate_sha256",
+        "release_attestation_id"
+      ],
+      "properties": {
+        "package_name": {"type": "string", "minLength": 3, "maxLength": 255},
+        "version_name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "version_code": {"type": "string", "minLength": 1, "maxLength": 32},
+        "signing_certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "release_attestation_id": {
+          "type": "string",
+          "pattern": "^ra-v1:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "runtime_identity_start": {"$ref": "#/$defs/runtime"},
+    "runtime_identity_end": {"$ref": "#/$defs/runtime"},
+    "step_results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 80,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "step_id",
+          "event_id",
+          "operation",
+          "session_id",
+          "virtual_time",
+          "process_epoch",
+          "network_state",
+          "decision_state",
+          "selected_context_ids",
+          "invalidated_state_ids",
+          "preserved_state_ids",
+          "state_before_sha256",
+          "state_after_sha256",
+          "action",
+          "tombstone_ids",
+          "receipt_ids",
+          "auto_check_evidence_ids"
+        ],
+        "properties": {
+          "step_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "event_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "operation": {
+            "enum": [
+              "RESET_AND_START",
+              "UPSERT_FACT",
+              "ADVANCE_SESSION",
+              "REQUEST_DECISION",
+              "CORRECT_FACT",
+              "REVOKE_SCOPE",
+              "DELETE_FACT",
+              "SET_NETWORK",
+              "PROCESS_KILL_RELAUNCH",
+              "REPLAY_EVENT",
+              "DELIVER_OUT_OF_ORDER",
+              "ADVANCE_TIME",
+              "EXPORT_AND_END"
+            ]
+          },
+          "session_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "virtual_time": {"type": "string", "format": "date-time"},
+          "process_epoch": {"type": "integer", "minimum": 0},
+          "network_state": {
+            "enum": ["ONLINE", "OFFLINE", "DELAYED", "UNKNOWN"]
+          },
+          "decision_state": {
+            "enum": [
+              "ACT",
+              "ASK",
+              "WAIT",
+              "ABSTAIN",
+              "PENDING",
+              "FAILED",
+              "CONFIRMED_COMPLETE",
+              "NO_DECISION"
+            ]
+          },
+          "selected_context_ids": {"$ref": "#/$defs/id_array"},
+          "invalidated_state_ids": {"$ref": "#/$defs/id_array"},
+          "preserved_state_ids": {"$ref": "#/$defs/id_array"},
+          "state_before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "state_after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "action": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["action_id", "idempotency_key", "commit_state", "outcome_id"],
+            "properties": {
+              "action_id": {"type": ["string", "null"], "maxLength": 128},
+              "idempotency_key": {"type": ["string", "null"], "maxLength": 128},
+              "commit_state": {
+                "enum": ["NONE", "PROPOSED", "COMMITTED", "CANCELLED", "FAILED"]
+              },
+              "outcome_id": {"type": ["string", "null"], "maxLength": 128}
+            }
+          },
+          "tombstone_ids": {"$ref": "#/$defs/id_array"},
+          "receipt_ids": {"$ref": "#/$defs/evidence_id_array"},
+          "auto_check_evidence_ids": {"$ref": "#/$defs/evidence_id_array"}
+        }
+      }
+    },
+    "evidence_ids": {"$ref": "#/$defs/evidence_id_array_nonempty"},
+    "result_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "id_array": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "id_array_nonempty": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "evidence_id_array": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      }
+    },
+    "evidence_id_array_nonempty": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_backend_frozen_id",
+        "release_attestation_id",
+        "cumulative_invocations"
+      ],
+      "properties": {
+        "model_backend_frozen_id": {
+          "oneOf": [
+            {"const": "NOT_USED"},
+            {"type": "string", "pattern": "^mbf-v1:[0-9a-f]{64}$"}
+          ]
+        },
+        "release_attestation_id": {
+          "type": "string",
+          "pattern": "^ra-v1:[0-9a-f]{64}$"
+        },
+        "cumulative_invocations": {"type": "integer", "minimum": 0, "maximum": 60}
+      }
+    }
+  }
+}

@@ -1,0 +1,675 @@
+{
+  "schema_version": 2,
+  "artifact_kind": "synthetic_delivery_catalog",
+  "provenance": "참가자가 직접 작성한 가상 데이터다. 실제 식당·메뉴·가격·재고·주소·연락처·계정과 무관하며 어떤 외부 서비스에서도 가져오지 않았다. 값은 런타임에 무작위로 생성하지 않으므로 full arm과 claim-off arm이 같은 byte에서 출발한다. 자연어 표현 목록도 데이터이므로 판단 코드가 문장을 해석하지 않는다.",
+  "currency": "KRW_SYNTHETIC",
+  "delivery_alias": "합성 배달지 A",
+  "scope_phrases": {
+    "this_order_only": [
+      "이번 주문만",
+      "이번만",
+      "오늘만",
+      "지금만",
+      "한 번만",
+      "이번에만"
+    ],
+    "remember_for_reuse": [
+      "앞으로도",
+      "계속",
+      "항상",
+      "다음에도",
+      "기억해",
+      "기억해줘",
+      "저장해",
+      "저장해줘"
+    ]
+  },
+  "intent_phrases": {
+    "recommend": [
+      "추천해줘",
+      "추천",
+      "골라줘",
+      "뭐 먹을까",
+      "메뉴 골라",
+      "알아서 골라줘"
+    ],
+    "revoke_auto_apply": [
+      "자동으로 정하지 마",
+      "자동으로 하지 마",
+      "자동 적용 하지 마",
+      "물어보고 해",
+      "묻고 해",
+      "알아서 정하지 마"
+    ],
+    "delete_note": [
+      "메모 지워",
+      "메모 삭제",
+      "요청사항 지워",
+      "요청사항 삭제"
+    ],
+    "confirm_order": [
+      "이대로 주문",
+      "이대로 해줘",
+      "확정",
+      "주문해줘"
+    ],
+    "show_memory": [
+      "기억 보여줘",
+      "저장된 취향",
+      "내 취향 보여줘"
+    ]
+  },
+  "unclear_phrases": [
+    {
+      "phrase": "가볍게",
+      "reason": "양·가격·기름기 중 무엇을 뜻하는지 기준이 여러 가지입니다"
+    },
+    {
+      "phrase": "적당히",
+      "reason": "어느 정도인지 기준이 없습니다"
+    },
+    {
+      "phrase": "빨리",
+      "reason": "몇 분 이내인지 기준이 없습니다"
+    },
+    {
+      "phrase": "저렴하게",
+      "reason": "예산 상한이 정해지지 않았습니다"
+    },
+    {
+      "phrase": "알아서",
+      "reason": "어느 항목을 맡길지 분명하지 않습니다"
+    },
+    {
+      "phrase": "평소처럼",
+      "reason": "어떤 과거 주문을 뜻하는지 분명하지 않습니다"
+    }
+  ],
+  "option_slots": [
+    {
+      "scope_token": "option.main",
+      "kind": "menu_option",
+      "label": "메뉴",
+      "priced": true,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": []
+    },
+    {
+      "scope_token": "option.spiciness",
+      "kind": "menu_option",
+      "label": "맵기",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "spice.mild",
+          "label": "순한맛",
+          "price_delta": 0,
+          "phrases": [
+            "순한맛",
+            "순하게",
+            "안 매운",
+            "안매운",
+            "맵지 않게",
+            "맵지않게",
+            "덜 맵게",
+            "매운 거 빼고"
+          ]
+        },
+        {
+          "token": "spice.medium",
+          "label": "중간맛",
+          "price_delta": 0,
+          "phrases": [
+            "중간맛",
+            "보통 맵기",
+            "약간 매운",
+            "조금 매운"
+          ]
+        },
+        {
+          "token": "spice.very_hot",
+          "label": "아주 매운맛",
+          "price_delta": 0,
+          "phrases": [
+            "아주 매운",
+            "아주 맵게",
+            "매운맛",
+            "많이 맵게",
+            "제일 맵게",
+            "매콤하게"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.saltiness",
+      "kind": "menu_option",
+      "label": "간 세기",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "salt.light",
+          "label": "약하게",
+          "price_delta": 0,
+          "phrases": [
+            "간 약하게",
+            "싱겁게",
+            "간 싱겁게",
+            "덜 짜게",
+            "짜지 않게"
+          ]
+        },
+        {
+          "token": "salt.normal",
+          "label": "보통",
+          "price_delta": 0,
+          "phrases": [
+            "간 보통",
+            "간은 보통",
+            "평범한 간"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.rice",
+      "kind": "menu_option",
+      "label": "밥 양",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "rice.small",
+          "label": "적게",
+          "price_delta": 0,
+          "phrases": [
+            "밥 적게",
+            "밥은 적게",
+            "밥 조금",
+            "공기밥 적게"
+          ]
+        },
+        {
+          "token": "rice.normal",
+          "label": "보통",
+          "price_delta": 0,
+          "phrases": [
+            "밥 보통",
+            "밥은 보통"
+          ]
+        },
+        {
+          "token": "rice.large",
+          "label": "많이",
+          "price_delta": 500,
+          "phrases": [
+            "밥 많이",
+            "밥은 많이",
+            "공기밥 추가",
+            "밥 추가"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.utensil",
+      "kind": "menu_option",
+      "label": "일회용 수저",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "utensil.exclude",
+          "label": "제외",
+          "price_delta": 0,
+          "phrases": [
+            "수저 빼고",
+            "수저 제외",
+            "수저 필요 없어",
+            "수저 안 줘도",
+            "일회용 수저 빼고",
+            "수저는 빼줘"
+          ]
+        },
+        {
+          "token": "utensil.include",
+          "label": "필요",
+          "price_delta": 0,
+          "phrases": [
+            "수저 줘",
+            "수저 필요",
+            "수저 넣어줘",
+            "일회용 수저 필요"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.side",
+      "kind": "menu_option",
+      "label": "사이드",
+      "priced": true,
+      "required": false,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "side.dumpling",
+          "label": "바삭 만두",
+          "price_delta": 3500,
+          "in_stock": true,
+          "phrases": [
+            "만두",
+            "바삭 만두",
+            "만두 추가",
+            "튀김만두"
+          ]
+        },
+        {
+          "token": "side.rice_ball",
+          "label": "주먹밥",
+          "price_delta": 2800,
+          "in_stock": true,
+          "phrases": [
+            "주먹밥",
+            "주먹밥 추가"
+          ]
+        },
+        {
+          "token": "side.dumpling.soldout",
+          "label": "바삭 만두",
+          "price_delta": 3500,
+          "in_stock": false,
+          "phrases": []
+        }
+      ]
+    },
+    {
+      "scope_token": "condition.budget",
+      "kind": "user_condition",
+      "label": "오늘 예산",
+      "priced": false,
+      "required": false,
+      "value_kind": "amount",
+      "values": [
+        {
+          "token": "budget.20000",
+          "label": "20,000원 이하",
+          "price_delta": 0,
+          "budget_limit": 20000,
+          "phrases": []
+        },
+        {
+          "token": "budget.18000",
+          "label": "18,000원 이하",
+          "price_delta": 0,
+          "budget_limit": 18000,
+          "phrases": []
+        },
+        {
+          "token": "budget.10000",
+          "label": "10,000원 이하",
+          "price_delta": 0,
+          "budget_limit": 10000,
+          "phrases": []
+        }
+      ]
+    },
+    {
+      "scope_token": "condition.warmth",
+      "kind": "user_condition",
+      "label": "음식 성격",
+      "priced": false,
+      "required": false,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "warmth.soup",
+          "label": "따뜻한 국물",
+          "price_delta": 0,
+          "phrases": [
+            "따뜻한 국물",
+            "국물",
+            "뜨끈한",
+            "따뜻한 거",
+            "따뜻한 걸",
+            "국물 있는"
+          ]
+        },
+        {
+          "token": "warmth.light",
+          "label": "가벼운 식사",
+          "price_delta": 0,
+          "phrases": [
+            "국물 없는",
+            "마른 거"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "condition.eta",
+      "kind": "user_condition",
+      "label": "희망 예상시간",
+      "priced": false,
+      "required": false,
+      "value_kind": "duration_minutes",
+      "values": [
+        {
+          "token": "eta.30",
+          "label": "30분 이내",
+          "price_delta": 0,
+          "eta_limit_minutes": 30,
+          "phrases": []
+        },
+        {
+          "token": "eta.45",
+          "label": "45분 이내",
+          "price_delta": 0,
+          "eta_limit_minutes": 45,
+          "phrases": []
+        }
+      ]
+    },
+    {
+      "scope_token": "request.note",
+      "kind": "user_request",
+      "label": "요청 메모",
+      "priced": false,
+      "required": false,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "note.sauce_separate",
+          "label": "소스 별도 포장",
+          "price_delta": 0,
+          "phrases": [
+            "소스 따로",
+            "소스 별도",
+            "소스는 따로",
+            "소스 따로 포장"
+          ]
+        },
+        {
+          "token": "note.utensil_bag",
+          "label": "봉투에 따로 담기",
+          "price_delta": 0,
+          "phrases": [
+            "따로 담아",
+            "봉투 따로",
+            "따로 포장"
+          ]
+        }
+      ]
+    }
+  ],
+  "restaurants": [
+    {
+      "entity_token": "restaurant.daon",
+      "name": "다온국밥 실험점",
+      "option_slots": [
+        "option.main",
+        "option.spiciness",
+        "option.rice",
+        "option.utensil"
+      ],
+      "menu": [
+        {
+          "token": "menu.daon.clear",
+          "label": "맑은 닭곰탕",
+          "price_delta": 11500,
+          "in_stock": true,
+          "eta_minutes": 28,
+          "traits": [
+            "warmth.soup",
+            "spice.mild",
+            "salt.light"
+          ],
+          "phrases": [
+            "맑은 닭곰탕",
+            "닭곰탕",
+            "맑은 국"
+          ]
+        },
+        {
+          "token": "menu.daon.spicy",
+          "label": "얼큰 닭곰탕",
+          "price_delta": 12000,
+          "in_stock": true,
+          "eta_minutes": 30,
+          "traits": [
+            "warmth.soup",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "얼큰 닭곰탕",
+            "얼큰한 닭곰탕"
+          ]
+        }
+      ]
+    },
+    {
+      "entity_token": "restaurant.ongi",
+      "name": "온기한상 실험점",
+      "option_slots": [
+        "option.main",
+        "option.saltiness",
+        "option.rice",
+        "option.utensil",
+        "option.side"
+      ],
+      "menu": [
+        {
+          "token": "menu.ongi.perilla",
+          "label": "들깨 수제비",
+          "price_delta": 10800,
+          "in_stock": true,
+          "eta_minutes": 26,
+          "traits": [
+            "warmth.soup",
+            "spice.mild",
+            "salt.light"
+          ],
+          "phrases": [
+            "들깨 수제비",
+            "수제비"
+          ]
+        },
+        {
+          "token": "menu.ongi.tofu",
+          "label": "순한 순두부",
+          "price_delta": 10200,
+          "in_stock": true,
+          "eta_minutes": 24,
+          "traits": [
+            "warmth.soup",
+            "spice.mild",
+            "salt.normal"
+          ],
+          "phrases": [
+            "순한 순두부",
+            "순두부"
+          ]
+        }
+      ]
+    },
+    {
+      "entity_token": "restaurant.bulkkot",
+      "name": "불꽃분식 실험점",
+      "option_slots": [
+        "option.main",
+        "option.spiciness",
+        "option.rice",
+        "option.utensil",
+        "option.side"
+      ],
+      "menu": [
+        {
+          "token": "menu.bulkkot.hot",
+          "label": "매운 떡볶이",
+          "price_delta": 9500,
+          "in_stock": true,
+          "eta_minutes": 22,
+          "traits": [
+            "warmth.light",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "매운 떡볶이",
+            "떡볶이"
+          ]
+        },
+        {
+          "token": "menu.bulkkot.mild",
+          "label": "순한 떡볶이",
+          "price_delta": 9500,
+          "in_stock": true,
+          "eta_minutes": 22,
+          "traits": [
+            "warmth.light",
+            "spice.mild"
+          ],
+          "phrases": [
+            "순한 떡볶이",
+            "안 매운 떡볶이"
+          ]
+        }
+      ]
+    }
+  ],
+  "catalog_events": [
+    {
+      "event_token": "catalog.ongi.side.dumpling.soldout",
+      "entity_token": "restaurant.ongi",
+      "scope_token": "option.side",
+      "value_token": "side.dumpling.soldout",
+      "description": "사이드 한 줄만 더 높은 catalog version으로 품절 처리된다. 본 메뉴와 독립 option은 건드리지 않는다."
+    },
+    {
+      "event_token": "catalog.daon.main.price_up",
+      "entity_token": "restaurant.daon",
+      "scope_token": "option.main",
+      "value_token": "menu.daon.spicy",
+      "description": "본 메뉴 줄만 더 높은 catalog version으로 교체되어 총액이 다시 계산된다."
+    }
+  ],
+  "rating_values": [
+    {
+      "token": "rating.good",
+      "label": "좋았어요",
+      "sentiment": "positive",
+      "score": 5
+    },
+    {
+      "token": "rating.ok",
+      "label": "괜찮았어요",
+      "sentiment": "neutral",
+      "score": 3
+    },
+    {
+      "token": "rating.poor",
+      "label": "아쉬웠어요",
+      "sentiment": "negative",
+      "score": 1
+    }
+  ],
+  "review_phrases": [
+    {
+      "phrase": "간이 셌",
+      "slot": "option.saltiness",
+      "implies_value": "salt.light",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "간이 세",
+      "slot": "option.saltiness",
+      "implies_value": "salt.light",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "짰",
+      "slot": "option.saltiness",
+      "implies_value": "salt.light",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "싱거웠",
+      "slot": "option.saltiness",
+      "implies_value": "salt.normal",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "너무 매웠",
+      "slot": "option.spiciness",
+      "implies_value": "spice.mild",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "너무 맵",
+      "slot": "option.spiciness",
+      "implies_value": "spice.mild",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "안 매웠",
+      "slot": "option.spiciness",
+      "implies_value": "spice.very_hot",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "양이 적었",
+      "slot": "option.rice",
+      "implies_value": "rice.large",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "양이 많았",
+      "slot": "option.rice",
+      "implies_value": "rice.small",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "늦게 왔",
+      "slot": "condition.eta",
+      "implies_value": null,
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "빨리 왔",
+      "slot": "condition.eta",
+      "implies_value": null,
+      "sentiment": "positive"
+    },
+    {
+      "phrase": "국물은 괜찮았",
+      "slot": null,
+      "implies_value": null,
+      "sentiment": "positive"
+    },
+    {
+      "phrase": "맛있었",
+      "slot": null,
+      "implies_value": null,
+      "sentiment": "positive"
+    },
+    {
+      "phrase": "좋았",
+      "slot": null,
+      "implies_value": null,
+      "sentiment": "positive"
+    },
+    {
+      "phrase": "아쉬웠",
+      "slot": null,
+      "implies_value": null,
+      "sentiment": "negative"
+    }
+  ],
+  "rating_scale_max": 5
+}

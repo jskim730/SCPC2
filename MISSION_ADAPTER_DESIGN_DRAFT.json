@@ -1,0 +1,114 @@
+{
+  "schema_version": "3.0.0-draft",
+  "artifact_kind": "mission_probe_adapter",
+  "role_bindings": {
+    "PRIMARY_GOAL": {
+      "mission_meaning": "현재 조건과 유효한 취향에 맞는 합성 개인 배달 주문 초안 완성",
+      "production_state_field": "orderContext.primaryGoal",
+      "evidence_path": "evidence/state/current_goal.json"
+    },
+    "TARGET_ENTITY": {
+      "mission_meaning": "현재 합성 식당, 메뉴와 option schema를 묶은 주문 대상",
+      "production_state_field": "orderContext.targetEntityId",
+      "evidence_path": "evidence/state/context_selection.json"
+    },
+    "DISTRACTOR_ENTITY": {
+      "mission_meaning": "다른 목표나 식당에 속해 현재 주문 판단에서 제외해야 하는 과거 대상",
+      "production_state_field": "contextCandidates.entityId",
+      "evidence_path": "evidence/state/context_selection.json"
+    },
+    "STABLE_VALUE": {
+      "mission_meaning": "여러 주문 session에서 재사용하도록 사용자가 명시한 안정 취향",
+      "production_state_field": "facts.stableValueToken",
+      "evidence_path": "evidence/state/facts.json"
+    },
+    "ONE_OFF_VALUE": {
+      "mission_meaning": "현재 주문 session에만 적용되고 새 session에서 만료되는 조건",
+      "production_state_field": "facts.oneOffValueToken",
+      "evidence_path": "evidence/state/facts.json"
+    },
+    "CURRENT_AUTHORITY": {
+      "mission_meaning": "과거 값보다 우선하는 가장 최근 사용자 지시 또는 정정 version",
+      "production_state_field": "facts.authorityVersion",
+      "evidence_path": "evidence/state/authority.json"
+    },
+    "REVOKED_SCOPE": {
+      "mission_meaning": "취향 원문과 분리하여 철회한 자동 적용 permission scope",
+      "production_state_field": "permissions.revokedScopeIds",
+      "evidence_path": "evidence/state/invalidation.json"
+    },
+    "PRESERVED_SCOPE": {
+      "mission_meaning": "정정, 철회, 품절 뒤에도 유효해 보존되는 주문 field scope",
+      "production_state_field": "draft.preservedFieldIds",
+      "evidence_path": "evidence/state/recovery.json"
+    },
+    "DELAYED_OUTCOME": {
+      "mission_meaning": "virtual time 뒤 도착해 다음 추천 또는 주문 판단을 바꾸는 만족도나 catalog 결과",
+      "production_state_field": "ledger.delayedOutcomes",
+      "evidence_path": "evidence/ledger/outcomes.json"
+    },
+    "EPHEMERAL_VALUE": {
+      "mission_meaning": "현재 초안에 사용되지만 삭제 뒤 원문과 파생 field가 부활하면 안 되는 합성 일회성 요청사항",
+      "production_state_field": "facts.ephemeralRequestToken",
+      "evidence_path": "evidence/state/deletion.json"
+    }
+  },
+  "operation_bindings": {
+    "RESET_AND_START": {
+      "production_callback": "ProductionProbeAdapter.resetAndStart",
+      "observable_evidence": "새 run ID, invocation counter 0, clean active state와 보존된 이전 run terminal snapshot"
+    },
+    "UPSERT_FACT": {
+      "production_callback": "ProductionProbeAdapter.upsertFact",
+      "observable_evidence": "source, authority, scope, lifetime과 dependency를 가진 typed production fact event"
+    },
+    "ADVANCE_SESSION": {
+      "production_callback": "ProductionProbeAdapter.advanceSession",
+      "observable_evidence": "새 session ID와 surface, 만료된 one-off ID, 보존된 stable fact ID"
+    },
+    "REQUEST_DECISION": {
+      "production_callback": "ProductionProbeAdapter.requestDecision",
+      "observable_evidence": "ACT, ASK, WAIT 또는 ABSTAIN 상태와 selected context, deterministic open confirmation evidence"
+    },
+    "CORRECT_FACT": {
+      "production_callback": "ProductionProbeAdapter.correctFact",
+      "observable_evidence": "증가한 authority version과 dependency를 따른 invalidated, preserved state ID"
+    },
+    "REVOKE_SCOPE": {
+      "production_callback": "ProductionProbeAdapter.revokeScope",
+      "observable_evidence": "철회된 opaque scope ID와 보존된 preference fact, 다른 permission scope ID"
+    },
+    "DELETE_FACT": {
+      "production_callback": "ProductionProbeAdapter.deleteFact",
+      "observable_evidence": "ephemeral 원문 제거, 파생 draft field 무효화와 복원 불가능한 최소 tombstone ID"
+    },
+    "SET_NETWORK": {
+      "production_callback": "ProductionProbeAdapter.setSyntheticNetwork",
+      "observable_evidence": "role 값에서 해석한 network 상태, catalog freshness와 정직한 WAIT 또는 ABSTAIN 상태"
+    },
+    "PROCESS_KILL_RELAUNCH": {
+      "production_callback": "ProductionProbeAdapter.prepareForHarnessKill",
+      "observable_evidence": "실제 kill 전 checkpoint, relaunch 뒤 증가한 process epoch와 pending commit reconciliation"
+    },
+    "REPLAY_EVENT": {
+      "production_callback": "ProductionProbeAdapter.replayEvent",
+      "observable_evidence": "동일 event ID, 기존 action ID와 idempotency 결과, 추가 commit 0"
+    },
+    "DELIVER_OUT_OF_ORDER": {
+      "production_callback": "ProductionProbeAdapter.deliverOutOfOrder",
+      "observable_evidence": "낮은 authority 또는 catalog version event와 current state 보존 결과"
+    },
+    "ADVANCE_TIME": {
+      "production_callback": "ProductionProbeAdapter.advanceVirtualTime",
+      "observable_evidence": "virtual time, materialize된 delayed outcome ID와 이후 decision 변화"
+    },
+    "EXPORT_AND_END": {
+      "production_callback": "ProductionProbeAdapter.exportAndEnd",
+      "observable_evidence": "terminal state, step-bound evidence, ledger, receipt와 result digest"
+    }
+  },
+  "source_paths": [
+    "app/src/main/java/com/scpc/deliveryagent/probe/ProductionProbeAdapter.kt",
+    "app/src/androidTest/java/com/scpc/deliveryagent/probe/ProbeParityTest.kt"
+  ]
+}

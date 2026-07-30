@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scpc.example/contracts/r2-v3/export-index.schema.json",
+  "title": "SCPC R2 v3 SAMPLE_EXPORT root index",
+  "description": "Draft schema for a reference sample only. Official Dacon run tokens are issued separately.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_kind",
+    "content_class",
+    "candidate_id",
+    "mission_id",
+    "release_id",
+    "run_id",
+    "operator_run_token",
+    "app_release_binding",
+    "source_binding",
+    "file_manifest",
+    "total_uncompressed_bytes"
+  ],
+  "properties": {
+    "schema_version": {"const": "3.0.0-draft"},
+    "artifact_kind": {"const": "sample_export_index"},
+    "content_class": {"const": "REFERENCE_SAMPLE_NOT_OFFICIAL"},
+    "candidate_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "mission_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "operator_run_token": {"type": "string", "minLength": 1, "maxLength": 256},
+    "app_release_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_name",
+        "version_name",
+        "version_code",
+        "app_release_sha256",
+        "signing_certificate_sha256"
+      ],
+      "properties": {
+        "package_name": {"type": "string", "minLength": 3, "maxLength": 255},
+        "version_name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "version_code": {"type": "string", "minLength": 1, "maxLength": 32},
+        "app_release_sha256": {"$ref": "#/$defs/sha256"},
+        "signing_certificate_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_archive_sha256",
+        "mission_adapter_relative_path",
+        "mission_adapter_sha256"
+      ],
+      "properties": {
+        "source_archive_sha256": {"$ref": "#/$defs/sha256"},
+        "mission_adapter_relative_path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\.\\./)[A-Za-z0-9._/-]{1,512}$"
+        },
+        "mission_adapter_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "file_manifest": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 1004,
+      "items": {"$ref": "#/$defs/manifestEntry"}
+    },
+    "total_uncompressed_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20971520
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\./)[A-Za-z0-9._/-]{1,512}$"
+    },
+    "manifestEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "sha256", "size_bytes"],
+      "properties": {
+        "relative_path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 0, "maximum": 20971520}
+      }
+    }
+  }
+}

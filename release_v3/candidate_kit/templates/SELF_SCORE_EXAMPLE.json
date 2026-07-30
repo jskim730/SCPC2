@@ -1,0 +1,55 @@
+{
+  "schema_version": "3.0.0-draft",
+  "content_class": "PUBLIC_REHEARSAL_SELF_ASSESSMENT_NOT_OFFICIAL",
+  "notes": "Replace every example statement and evidence ID with observations from your APK.",
+  "facts": [
+    {
+      "probe_id": "CORE-1",
+      "observed": "PRACTICE-A의 다른 entity distractor를 추가해도 current goal의 선택근거가 유지됐다.",
+      "expected_property": "wrong-goal/entity distractor invariance and minimal current context",
+      "difference": "공개 A/B 두 surface에서 일치했으나 제3 surface는 아직 시험하지 않았다.",
+      "evidence_ids": ["public-practice-A-00m42s", "state-A2.json"],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-2",
+      "observed": "정정·부분철회와 삭제가 relaunch 뒤 descendant state에 유지됐다.",
+      "expected_property": "current authority and delete dominate stale state",
+      "difference": "공개 흐름에서 일치했다.",
+      "evidence_ids": ["public-practice-A-12m10s", "public-practice-B-21m33s"],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-3",
+      "observed": "E2에서 입력 두 개가 줄고 필요한 확인 하나는 유지됐다.",
+      "expected_property": "burden decreases without losing required safety",
+      "difference": "서로 다른 두 surface에서 재현했다.",
+      "evidence_ids": ["burden-count-A.json", "burden-count-B.json"],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-4",
+      "observed": "충돌에서 재계획하고 철회된 부분만 수정한 뒤 정상 autonomy로 회복했다.",
+      "expected_property": "change-point response and scoped recovery",
+      "difference": "공개 변형에서는 일치했으나 독립 late trade-off는 아직 없다.",
+      "evidence_ids": ["public-practice-A-18m05s", "state-A6.json"],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-5",
+      "observed": "commit 전 kill과 duplicate 뒤 action이 한 번만 기록됐다.",
+      "expected_property": "restart reconciliation and exactly-once outcome",
+      "difference": "out-of-order와 kill을 각각 시험했다.",
+      "evidence_ids": ["restart-ledger.json", "public-practice-B-09m51s"],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-6",
+      "observed": "delayed outcome이 다음 판단을 바꾸고 receipt rollup과 ledger가 일치했다.",
+      "expected_property": "late outcome affects later decision with evidence integrity",
+      "difference": "한 종류의 delayed outcome에서 재현했다.",
+      "evidence_ids": ["delayed-ledger.json", "receipt-B.json"],
+      "anchor": 3
+    }
+  ]
+}
