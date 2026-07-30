@@ -10,11 +10,20 @@ SCPC 2026 AI Challenge 예선 2차용 Android 개인 배달 주문 에이전트 
 - `release_v3/`: 대회 공식 Kit의 읽기 전용 참조 사본
 - `work/harness/`: Windows 로컬 연습을 위해 조정한 공동 디버깅 도구
 - `work/`: APK와 Probe 실행결과를 생성하는 로컬 작업공간
-- 루트의 Mission·전략·UX·검증 문서: 설계와 평가 대응 근거
+- `SCPC2026_R2_MISSION_First_penguin.pdf`: 제출 완료·사용자 동결된 Mission 기준
+- `SCPC2026_R2_MISSION_First_penguin.docx`: 최종 Mission의 편집 원본
+- 루트의 전략·UX·검증 문서: 제출 Mission 범위 안의 설계와 평가 대응 근거
 
 `work/APP.apk`, `work/PUBLIC_RUN/`, Gradle/Python 캐시, signing key와 실행 token은
 재생성 가능한 로컬 산출물이므로 Git에서 제외합니다. 합성 catalog와 재현 가능한 테스트 입력은
 저장소에 포함합니다.
+
+## Mission 기준
+
+Mission 선언은 `2026-07-31 KST`에 제출되었으며 사용자가 최종본으로 확정했습니다. 구현과 평가 설계는
+루트의 `SCPC2026_R2_MISSION_First_penguin.pdf`를 기준으로 진행합니다. DOCX는 편집 원본이며 동결
+내용을 판단할 때는 제출 PDF가 우선합니다. Dacon이 `MISSION_LOCK.json`을 제공하면 제출 PDF와 대조하고
+공식 동결 정보에는 그 파일을 따릅니다. 참가자가 `MISSION_LOCK.json`을 직접 생성하거나 수정하지 않습니다.
 
 ## Android 환경
 
@@ -34,9 +43,10 @@ cd android
 
 ## 협업자가 먼저 읽을 것
 
-1. `android/IMPLEMENTATION_STATUS.md` — 어디까지 됐는지, 무엇이 남았는지, 되돌리면 안 되는 설계 결정
-2. `COMPETITION_CONTEXT.md` — 공식 규칙 snapshot. 기술 판단의 근거는 여기서 인용합니다
-3. `AGENTS.md` — 작업공간 규칙
+1. `SCPC2026_R2_MISSION_First_penguin.pdf` — 제출·동결된 제품 범위와 평가 주장
+2. `android/IMPLEMENTATION_STATUS.md` — 어디까지 됐는지, 무엇이 남았는지, 되돌리면 안 되는 설계 결정
+3. `COMPETITION_CONTEXT.md` — 공식 규칙 snapshot. 기술 판단의 근거는 여기서 인용합니다
+4. `AGENTS.md` — 작업공간 규칙
 
 레이어 경계를 지킵니다. 판단 로직은 `android/app/src/main/java/com/scpc/deliveryagent/core/`,
 한국어·메뉴·금액은 `android/app/src/main/assets/synthetic/catalog.json`에 둡니다. `core/`에 한국어
