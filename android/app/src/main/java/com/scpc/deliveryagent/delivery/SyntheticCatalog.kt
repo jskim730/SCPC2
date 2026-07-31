@@ -83,6 +83,10 @@ data class OptionValue(
     val phrases: List<String>,
     /** Value tokens of other slots this item satisfies. Used for ranking. */
     val traits: List<String>,
+    /** Catalog-authored menu type. Present on every restaurant menu entry, never on slot values. */
+    val menuType: String? = null,
+    /** Option slots that attach to one order line of this menu. Menu entries only. */
+    val lineOptionSlots: List<String> = emptyList(),
 )
 
 /** One option slot: the addressing scope plus the values it accepts. */
@@ -113,9 +117,53 @@ data class RestaurantDefinition(
     val name: String,
     val slotTokens: List<String>,
     val menu: List<OptionValue>,
+    /** Slots that belong to the whole order rather than to one order line. */
+    val orderLevelSlots: List<String> = emptyList(),
+    /**
+     * Value tokens this restaurant actually offers, per slot, when it offers only
+     * some of them. A missing entry means it offers the slot's full list.
+     *
+     * Two kitchens rarely divide heat the same way: one has three steps, another
+     * only mild and hot. That is what makes reuse across restaurants a real
+     * question rather than a token copy, and it is why a stored preference can be
+     * valid, permitted and still unusable here.
+     */
+    val offeredValues: Map<String, List<String>> = emptyMap(),
 ) {
     fun slotIds(): List<String> = slotTokens.map { Ids.state("slot", it) }
 }
+
+/** Whether a menu of this type anchors an order or accompanies one. */
+enum class MenuCourse {
+    MAIN, SIDE;
+
+    companion object {
+        fun of(value: String): MenuCourse = when (value) {
+            "main" -> MAIN
+            "side" -> SIDE
+            else -> error("unknown menu course '$value'")
+        }
+    }
+}
+
+/**
+ * A catalog-authored menu type: the unit at which a preference may cross
+ * restaurants.
+ *
+ * Two menus belong to the same type only when the author says so with the same
+ * token; a display name or a similar phrase never makes two menus the same type.
+ */
+data class MenuTypeDefinition(
+    val token: String,
+    val label: String,
+    val course: MenuCourse,
+    /**
+     * Slots whose meaning the author declares stable across restaurants for menus
+     * of this type. A MENU_TYPE-scoped preference may only target these slots,
+     * and only where the current restaurant also offers the slot.
+     */
+    val stableOptionSlots: List<String>,
+)
 
 /** A pre-authored catalog change, such as one line going out of stock. */
 data class CatalogEvent(
@@ -123,6 +171,8 @@ data class CatalogEvent(
     val entityToken: String,
     val scopeToken: String,
     val valueToken: String,
+    /** The catalog value this change supersedes. Defaults to [valueToken]. */
+    val replacesValue: String,
     val description: String,
 )
 
@@ -178,7 +228,11 @@ object Slots {
     const val SALTINESS = "option.saltiness"
     const val RICE = "option.rice"
     const val UTENSIL = "option.utensil"
-    const val SIDE = "option.side"
+    const val QUANTITY = "option.quantity"
+    const val CILANTRO = "option.cilantro"
+    const val EGG = "option.egg"
+    const val TOFU = "option.tofu"
+    const val CHEESE = "option.cheese"
     const val BUDGET = "condition.budget"
     const val WARMTH = "condition.warmth"
     const val ETA = "condition.eta"
@@ -191,6 +245,7 @@ class SyntheticCatalog private constructor(
     val provenance: String,
     val slots: List<SlotDefinition>,
     val restaurants: List<RestaurantDefinition>,
+    val menuTypes: List<MenuTypeDefinition>,
     val events: List<CatalogEvent>,
     val scopePhrases: ScopePhrases,
     val intentPhrases: Map<Intent, List<String>>,
@@ -206,6 +261,7 @@ class SyntheticCatalog private constructor(
 ) {
 
     private val slotsByToken = slots.associateBy { it.scopeToken }
+    private val menuTypesByToken = menuTypes.associateBy { it.token }
     private val valuesByToken: Map<String, OptionValue> =
         (slots.flatMap { it.values } + restaurants.flatMap { it.menu }).associateBy { it.token }
     private val slotTokenOfValue: Map<String, String> = buildMap {
@@ -222,12 +278,54 @@ class SyntheticCatalog private constructor(
     fun slot(scopeToken: String): SlotDefinition =
         slotsByToken[scopeToken] ?: error("unknown option slot $scopeToken")
 
+    fun menuType(token: String): MenuTypeDefinition =
+        menuTypesByToken[token] ?: error("unknown menu type $token")
+
+    /** Menu type of a menu value token, when the token names a menu. */
+    fun menuTypeOf(menuToken: String?): MenuTypeDefinition? {
+        if (menuToken == null) return null
+        return value(menuToken)?.menuType?.let(::menuType)
+    }
+
+    /** Whether a menu entry anchors an order or accompanies one. */
+    fun courseOf(item: OptionValue): MenuCourse =
+        item.menuType?.let { menuType(it).course } ?: MenuCourse.MAIN
+
+    /** Menus a recommendation may anchor an order on. */
+    fun mainMenus(restaurant: RestaurantDefinition): List<OptionValue> =
+        restaurant.menu.filter { courseOf(it) == MenuCourse.MAIN }
+
+    /** Menus offered as an accompanying order line. */
+    fun sideMenus(restaurant: RestaurantDefinition): List<OptionValue> =
+        restaurant.menu.filter { courseOf(it) == MenuCourse.SIDE }
+
     fun slotsOf(restaurant: RestaurantDefinition): List<SlotDefinition> =
         restaurant.slotTokens.map(::slot)
 
-    /** Values offerable in a slot at a restaurant. The menu belongs to the restaurant. */
-    fun valuesFor(restaurant: RestaurantDefinition, scopeToken: String): List<OptionValue> =
-        if (scopeToken == Slots.MAIN) restaurant.menu else slot(scopeToken).values
+    /**
+     * Values offerable in a slot at a restaurant.
+     *
+     * The menu belongs to the restaurant, and so does how finely it divides an
+     * option: a restaurant that lists only two heat levels offers only those two.
+     */
+    fun valuesFor(restaurant: RestaurantDefinition, scopeToken: String): List<OptionValue> {
+        if (scopeToken == Slots.MAIN) return restaurant.menu
+        val all = slot(scopeToken).values
+        val offered = restaurant.offeredValues[scopeToken] ?: return all
+        return all.filter { it.token in offered }
+    }
+
+    /**
+     * Value tokens this restaurant cannot fulfil even though it offers the slot.
+     *
+     * A stored preference naming one of these is not silently replaced with
+     * something close; the field opens as a question instead.
+     */
+    fun valuesNotOfferedBy(restaurant: RestaurantDefinition): Set<String> =
+        restaurant.offeredValues.keys.flatMap { scopeToken ->
+            val offered = restaurant.offeredValues.getValue(scopeToken).toSet()
+            slot(scopeToken).values.map { it.token }.filter { it !in offered }
+        }.toSet()
 
     /**
      * Resolves a value token.
@@ -263,6 +361,11 @@ class SyntheticCatalog private constructor(
     /** Label for a slot identifier produced by the core. */
     fun slotLabel(slotId: String): String {
         if (slotId == AsprEngine.SLOT_TOTAL) return "총액"
+        LineTokens.parseSlotId(slotId)?.let { parsed ->
+            val base = slotsByToken[parsed.baseScopeToken]
+            val baseLabel = base?.label ?: parsed.baseScopeToken
+            return "항목 ${parsed.lineId} · $baseLabel"
+        }
         slots.forEach { slot ->
             if (slotId == slot.slotId || slotId.startsWith("${slot.slotId}.")) {
                 return when {
@@ -273,6 +376,10 @@ class SyntheticCatalog private constructor(
         }
         return slotId
     }
+
+    /** Base option slot of a line-scoped field slot id, when it names one. */
+    fun baseSlotOfLineSlotId(slotId: String): SlotDefinition? =
+        LineTokens.parseSlotId(slotId)?.let { slotsByToken[it.baseScopeToken] }
 
     fun rating(token: String?): RatingValue? =
         ratingValues.firstOrNull { it.token == token }
@@ -327,7 +434,7 @@ class SyntheticCatalog private constructor(
 
     companion object {
 
-        private const val EXPECTED_SCHEMA = 2
+        private const val EXPECTED_SCHEMA = 3
         private const val EXPECTED_KIND = "synthetic_delivery_catalog"
 
         /** A restaurant name must carry this marker so nobody mistakes it for a real one. */
@@ -361,12 +468,16 @@ class SyntheticCatalog private constructor(
             val restaurants = root.getJSONArray("restaurants").let { array ->
                 (0 until array.length()).map { index -> restaurant(array.getJSONObject(index)) }
             }
+            val menuTypes = root.getJSONArray("menu_types").let { array ->
+                (0 until array.length()).map { index -> menuTypeDefinition(array.getJSONObject(index)) }
+            }
             val events = root.optJSONArray("catalog_events")?.let { array ->
                 (0 until array.length()).map { index -> event(array.getJSONObject(index)) }
             }.orEmpty()
 
             requireUnique(slots.map { it.scopeToken }, "option slot")
             requireUnique(restaurants.map { it.entityToken }, "restaurant")
+            requireUnique(menuTypes.map { it.token }, "menu type")
             requireUnique(
                 slots.flatMap { it.values }.map { it.token } +
                     restaurants.flatMap { it.menu }.map { it.token },
@@ -377,6 +488,20 @@ class SyntheticCatalog private constructor(
             val slotTokens = slots.map { it.scopeToken }.toSet()
             val valueTokens = (slots.flatMap { it.values } + restaurants.flatMap { it.menu })
                 .map { it.token }.toSet()
+            val menuTypeTokens = menuTypes.map { it.token }.toSet()
+            menuTypes.forEach { type ->
+                val unknownStable = type.stableOptionSlots.toSet() - slotTokens
+                require(unknownStable.isEmpty()) {
+                    "${type.token} declares unknown stable option slots $unknownStable"
+                }
+            }
+            slots.forEach { slot ->
+                slot.values.forEach { value ->
+                    require(value.menuType == null && value.lineOptionSlots.isEmpty()) {
+                        "slot value ${value.token} must not declare menu typing"
+                    }
+                }
+            }
             restaurants.forEach { restaurant ->
                 require(restaurant.menu.isNotEmpty()) { "${restaurant.entityToken} has no menu" }
                 val unknown = restaurant.slotTokens - slotTokens
@@ -386,10 +511,37 @@ class SyntheticCatalog private constructor(
                 require(restaurant.slotTokens.contains(Slots.MAIN)) {
                     "${restaurant.entityToken} must offer the ${Slots.MAIN} slot"
                 }
+                val strayOrderLevel = restaurant.orderLevelSlots.toSet() - restaurant.slotTokens.toSet()
+                require(strayOrderLevel.isEmpty()) {
+                    "${restaurant.entityToken} order-level slots $strayOrderLevel are not offered slots"
+                }
+                restaurant.offeredValues.forEach { (scopeToken, offered) ->
+                    require(scopeToken in restaurant.slotTokens) {
+                        "${restaurant.entityToken} narrows $scopeToken, a slot it does not offer"
+                    }
+                    require(scopeToken != Slots.MAIN) {
+                        "${restaurant.entityToken} must narrow its menu through the menu list itself"
+                    }
+                    val known = slots.first { it.scopeToken == scopeToken }.values.map { it.token }
+                    val unknown = offered.toSet() - known.toSet()
+                    require(unknown.isEmpty()) {
+                        "${restaurant.entityToken} offers unknown $scopeToken values $unknown"
+                    }
+                }
                 restaurant.menu.forEach { item ->
                     val unknownTraits = item.traits - valueTokens
                     require(unknownTraits.isEmpty()) {
                         "${item.token} claims unknown traits $unknownTraits"
+                    }
+                    require(item.menuType != null && item.menuType in menuTypeTokens) {
+                        "${item.token} must declare a known menu_type"
+                    }
+                    val strayLine = item.lineOptionSlots.toSet() - restaurant.slotTokens.toSet()
+                    require(strayLine.isEmpty()) {
+                        "${item.token} line option slots $strayLine are not offered by ${restaurant.entityToken}"
+                    }
+                    require(Slots.MAIN !in item.lineOptionSlots) {
+                        "${item.token} must not list ${Slots.MAIN} as a line option slot"
                     }
                 }
             }
@@ -473,6 +625,7 @@ class SyntheticCatalog private constructor(
                 provenance = root.getString("provenance"),
                 slots = slots,
                 restaurants = restaurants,
+                menuTypes = menuTypes,
                 events = events,
                 scopePhrases = scopePhrases,
                 intentPhrases = intents,
@@ -539,6 +692,22 @@ class SyntheticCatalog private constructor(
             val menu = json.getJSONArray("menu").let { array ->
                 (0 until array.length()).map { index -> value(array.getJSONObject(index)) }
             }
+            val orderLevelSlots = json.optJSONArray("order_level_slots")?.let { array ->
+                (0 until array.length()).map { index -> token(array.getString(index)) }
+            }.orEmpty()
+            val offeredValues = json.optJSONObject("offered_values")?.let { obj ->
+                buildMap {
+                    obj.keys().forEach { key ->
+                        val values = obj.getJSONArray(key).let { array ->
+                            (0 until array.length()).map { index -> token(array.getString(index)) }
+                        }
+                        require(values.isNotEmpty()) {
+                            "offered_values for $key cannot be empty"
+                        }
+                        put(token(key), values)
+                    }
+                }
+            }.orEmpty()
             require(menu.all { it.etaMinutes != null && it.etaMinutes > 0 }) {
                 "every menu item needs a positive synthetic estimate"
             }
@@ -550,6 +719,8 @@ class SyntheticCatalog private constructor(
                 name = name,
                 slotTokens = slotTokens,
                 menu = menu,
+                orderLevelSlots = orderLevelSlots,
+                offeredValues = offeredValues,
             )
         }
 
@@ -571,16 +742,33 @@ class SyntheticCatalog private constructor(
                 traits = json.optJSONArray("traits")?.let { array ->
                     (0 until array.length()).map { index -> token(array.getString(index)) }
                 }.orEmpty(),
+                menuType = if (json.has("menu_type")) token(json.getString("menu_type")) else null,
+                lineOptionSlots = json.optJSONArray("line_option_slots")?.let { array ->
+                    (0 until array.length()).map { index -> token(array.getString(index)) }
+                }.orEmpty(),
             )
         }
 
-        private fun event(json: JSONObject): CatalogEvent = CatalogEvent(
-            eventToken = token(json.getString("event_token")),
-            entityToken = token(json.getString("entity_token")),
-            scopeToken = token(json.getString("scope_token")),
-            valueToken = token(json.getString("value_token")),
-            description = json.getString("description"),
+        private fun menuTypeDefinition(json: JSONObject): MenuTypeDefinition = MenuTypeDefinition(
+            token = token(json.getString("token")),
+            label = label(json.getString("label")),
+            course = MenuCourse.of(json.getString("course")),
+            stableOptionSlots = json.getJSONArray("stable_option_slots").let { array ->
+                (0 until array.length()).map { index -> token(array.getString(index)) }
+            },
         )
+
+        private fun event(json: JSONObject): CatalogEvent {
+            val valueToken = token(json.getString("value_token"))
+            return CatalogEvent(
+                eventToken = token(json.getString("event_token")),
+                entityToken = token(json.getString("entity_token")),
+                scopeToken = token(json.getString("scope_token")),
+                valueToken = valueToken,
+                replacesValue = json.optNullable("replaces_value")?.let(::token) ?: valueToken,
+                description = json.getString("description"),
+            )
+        }
 
         private fun stringList(json: JSONObject, key: String): List<String> =
             json.getJSONArray(key).let { array ->
@@ -628,15 +816,58 @@ class DraftPricing(private val catalog: SyntheticCatalog) {
         val valueLabel: String,
         val amount: Int,
         val inStock: Boolean,
+        /** Order line this amount belongs to, when the draft declares lines. */
+        val lineId: String? = null,
+        val quantity: Int = 1,
+        /** Part of [amount] that comes from paid extras rather than the dish. */
+        val extrasAmount: Int = 0,
     )
 
     /**
      * The lines that carry an amount.
      *
-     * The core marks every value priced against the current restaurant's catalog;
-     * which of those actually costs money is catalog data, so it is decided here.
+     * A draft with declared order lines prices each line from its menu and
+     * quantity. A draft without them — the probe path never declares lines —
+     * falls back to pricing every priced field the old way.
      */
-    fun lines(state: ProductionState): List<Line> =
+    fun lines(state: ProductionState): List<Line> {
+        if (state.draftLines.isEmpty()) return flatLines(state)
+        return state.draftLines.mapNotNull { decl ->
+            val menuField = state.fields[LineTokens.menuFieldId(decl.lineId)]
+                ?: return@mapNotNull null
+            val entry = catalog.value(menuField.value) ?: return@mapNotNull null
+            val quantity = quantityOf(state, decl.lineId)
+            // A paid extra belongs to the dish it was added to, so it is charged
+            // as many times as that dish is ordered.
+            val extras = decl.slots.sumOf { binding ->
+                val base = binding.baseSlotId ?: return@sumOf 0
+                if (catalog.slotOfFieldSlotId(base)?.priced != true) return@sumOf 0
+                val field = state.fields[AsprEngine.fieldIdFor(binding.lineSlotId)]
+                    ?: return@sumOf 0
+                catalog.value(field.value)?.priceDelta ?: 0
+            }
+            Line(
+                fieldId = menuField.fieldId,
+                label = catalog.slotLabel(menuField.slotId),
+                valueLabel = catalog.valueLabel(menuField.value) +
+                    (if (quantity > 1) " ×$quantity" else ""),
+                amount = (entry.priceDelta + extras) * quantity,
+                inStock = entry.inStock,
+                lineId = decl.lineId,
+                quantity = quantity,
+                extrasAmount = extras * quantity,
+            )
+        }
+    }
+
+    /** Quantity the user set for one order line; one when unset. */
+    fun quantityOf(state: ProductionState, lineId: String): Int {
+        val field = state.fields[AsprEngine.fieldIdFor(LineTokens.quantitySlotId(lineId))]
+            ?: return 1
+        return field.value?.substringAfterLast('.')?.toIntOrNull() ?: 1
+    }
+
+    private fun flatLines(state: ProductionState): List<Line> =
         state.fields.values
             .filter { field ->
                 field.priced &&

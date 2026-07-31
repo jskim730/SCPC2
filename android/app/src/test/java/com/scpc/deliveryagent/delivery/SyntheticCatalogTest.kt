@@ -86,11 +86,64 @@ class SyntheticCatalogTest {
     @Test
     fun `the declared out of stock value is actually out of stock`() {
         val catalog = catalog()
-        val soldOut = catalog.value("side.dumpling.soldout")
+        val soldOut = catalog.value("menu.ongi.dumpling.soldout")
         assertNotNull(soldOut)
         assertFalse(soldOut!!.inStock)
-        assertTrue(catalog.valueLabel("side.dumpling.soldout").contains("품절"))
-        assertTrue(catalog.value("side.dumpling")!!.inStock)
+        assertTrue(catalog.valueLabel("menu.ongi.dumpling.soldout").contains("품절"))
+        assertTrue(catalog.value("menu.ongi.dumpling")!!.inStock)
+    }
+
+    @Test
+    fun `every shipped menu declares a known menu type and offered line slots`() {
+        val catalog = catalog()
+        catalog.restaurants.forEach { restaurant ->
+            restaurant.menu.forEach { item ->
+                assertNotNull("${item.token} needs a menu_type", item.menuType)
+                assertNotNull(catalog.menuType(item.menuType!!))
+                item.lineOptionSlots.forEach { slotToken ->
+                    assertTrue(
+                        "${item.token} line slot $slotToken must be offered by the restaurant",
+                        restaurant.slotTokens.contains(slotToken),
+                    )
+                }
+            }
+        }
+        catalog.menuTypes.forEach { type ->
+            type.stableOptionSlots.forEach { slotToken ->
+                assertNotNull(catalog.slot(slotToken))
+            }
+        }
+    }
+
+    @Test
+    fun `the soup menu type is authored across restaurants so a preference can cross them`() {
+        val catalog = catalog()
+        val daonClear = catalog.value("menu.daon.clear")!!
+        val ongiPerilla = catalog.value("menu.ongi.perilla")!!
+        assertEquals(daonClear.menuType, ongiPerilla.menuType)
+        val type = catalog.menuType(daonClear.menuType!!)
+        assertTrue(
+            "rice must be a stable slot of the soup menu type",
+            type.stableOptionSlots.contains(Slots.RICE),
+        )
+        val tteokbokki = catalog.value("menu.bulkkot.hot")!!
+        assertFalse(
+            "different food should not share the soup menu type",
+            tteokbokki.menuType == daonClear.menuType,
+        )
+    }
+
+    @Test
+    fun `a menu with an unknown menu type is rejected`() {
+        val broken = assetFile.readText(Charsets.UTF_8)
+            .replace("\"menu_type\": \"menutype.soup_meal\"", "\"menu_type\": \"menutype.ghost\"")
+        val failed = try {
+            SyntheticCatalog.parse(broken)
+            false
+        } catch (expected: Exception) {
+            true
+        }
+        assertTrue("an unknown menu type should have been rejected", failed)
     }
 
     @Test

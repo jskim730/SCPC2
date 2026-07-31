@@ -98,6 +98,21 @@ class ProductionState {
     val fields: MutableMap<String, DraftField> = linkedMapOf()
     val tombstones: MutableMap<String, Tombstone> = linkedMapOf()
 
+    /**
+     * Order lines of the current draft, declared by the product surface. Probe
+     * input declares none, so projection keeps its one-field-per-slot shape
+     * there. A new order session starts with no lines.
+     */
+    val draftLines: MutableList<DraftLineDecl> = mutableListOf()
+
+    /**
+     * Every slot id that has ever belonged to a declared line of the current
+     * draft, including lines that were removed since. A leftover fact of a
+     * removed line must stay a line-addressed value and never re-surface as an
+     * order-level field.
+     */
+    val lineSlotRegistry: MutableSet<String> = linkedSetOf()
+
     val events: MutableMap<String, EventRecord> = linkedMapOf()
 
     /** Actions keyed by idempotency key so one commit identity commits once. */
@@ -151,6 +166,8 @@ class ProductionState {
         facts.clear()
         revokedScopes.clear()
         fields.clear()
+        draftLines.clear()
+        lineSlotRegistry.clear()
         tombstones.clear()
         events.clear()
         actions.clear()
@@ -214,6 +231,8 @@ class ProductionState {
         .put("facts", mapJson(facts) { it.toJson() })
         .put("revokedScopes", JSONArray(revokedScopes.toList()))
         .put("fields", mapJson(fields) { it.toJson() })
+        .put("draftLines", listJson(draftLines) { it.toJson() })
+        .put("lineSlotRegistry", JSONArray(lineSlotRegistry.toList()))
         .put("tombstones", mapJson(tombstones) { it.toJson() })
         .put("events", mapJson(events) { it.toJson() })
         .put("actions", mapJson(actions) { it.toJson() })
@@ -293,6 +312,9 @@ class ProductionState {
                     state.fields[key] = DraftField.fromJson(fields.getJSONObject(key))
                 }
             }
+            json.optJSONArray("draftLines")?.objects()?.map(DraftLineDecl::fromJson)
+                ?.let(state.draftLines::addAll)
+            json.optJSONArray("lineSlotRegistry")?.strings()?.let(state.lineSlotRegistry::addAll)
             json.optJSONObject("tombstones")?.let { tombstones ->
                 tombstones.keys().forEach { key ->
                     state.tombstones[key] = Tombstone.fromJson(tombstones.getJSONObject(key))

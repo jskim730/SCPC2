@@ -22,6 +22,35 @@ object Role {
 }
 
 /**
+ * Addressing keys the product surface adds beyond the ten contract roles.
+ *
+ * The contract tolerates caller-defined addressing keys, and official probe
+ * input never sends these; a step without them stores an unscoped fact exactly
+ * as before. They carry the structural scope of a preference — which base slot
+ * it competes for and how narrowly it applies — so the engine gets scope as
+ * data instead of parsing it out of a token spelling.
+ */
+object RoleExt {
+    /** Base option slot token a scoped preference competes for. */
+    const val BASE_SCOPE = "PRODUCT_BASE_SCOPE"
+
+    /** "0" global, "1" menu-type, "2" exact restaurant-menu override. */
+    const val SPECIFICITY = "PRODUCT_SPECIFICITY"
+
+    /** Catalog-authored menu type token bound to a specificity-1 value. */
+    const val MENU_TYPE_ID = "PRODUCT_MENU_TYPE_ID"
+
+    /** Exact menu token bound to a specificity-2 value. */
+    const val SCOPE_MENU_ID = "PRODUCT_SCOPE_MENU_ID"
+
+    /**
+     * Virtual time after which a scheduled delayed outcome stops applying, for
+     * a passing notice such as a request to rate the finished order.
+     */
+    const val EXPIRES_AT = "PRODUCT_EXPIRES_AT"
+}
+
+/**
  * Read-only view over one step's `roles` object.
  *
  * Role values are opaque synthetic tokens. Nothing here interprets their

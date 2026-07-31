@@ -12,7 +12,7 @@ import com.scpc.deliveryagent.core.Relevance
  * Candidates are scored from four sources, each of which the user can trace on
  * screen: the conditions stated for this order, the preferences that are still
  * valid and permitted for this target, the satisfaction results that arrived after
- * an earlier order, and the ratings the user left on this restaurant's own lines.
+ * an earlier order, and the ratings the user left on this restaurant's own menus.
  * Nothing is inferred from a value the catalog does not carry, and a candidate is
  * never auto-confirmed: the user picks.
  *
@@ -20,16 +20,16 @@ import com.scpc.deliveryagent.core.Relevance
  * comparison arms, so the difference between them stays attributable to ASPR
  * alone rather than to ordinary order history.
  *
- * A star rating is different from a review remark and is treated differently. A
- * remark names an option and becomes a scoped result the user agreed to, which is
- * why it ranks. A rating is raw history about one whole order, so it is **shown,
- * not scored**: the average appears next to the price and the estimate so the user
- * can compare, and the ranking does not move because of it. That keeps the ranking
- * explainable, keeps a popular-but-wrong dish from climbing over what the user
- * actually asked for, and keeps the measured comparison gain attributable to the
- * mechanism rather than to ordinary order history.
+ * A star rating is different from a review remark. A remark names an option and
+ * only ever becomes memory at the scope the user approved. A rating is the
+ * user's own record of that exact restaurant-menu pair, and it ranks **below
+ * everything the user asked for**: it never outranks a current condition or a
+ * stored preference, it only orders candidates those sources leave tied, damped
+ * by how few ratings exist (count-aware smoothing) so one tap cannot swing the
+ * list. It never blocks a choice and never applies an option. Both comparison
+ * arms rank with it identically, so no measured gain comes from it.
  *
- * Ratings shown are the user's own past ratings on this device. No other person's
+ * Ratings used are the user's own past ratings on this device. No other person's
  * ratings or profile are involved.
  */
 class Recommender(private val catalog: SyntheticCatalog) {
@@ -44,8 +44,14 @@ class Recommender(private val catalog: SyntheticCatalog) {
         val estimateMinutes: Int,
         val score: Int,
         val reasons: List<Reason>,
-        /** The user's own past ratings for this line. Display only. */
+        /** The user's own past ratings for this menu at this restaurant. */
         val rating: Tally,
+        /**
+         * Count-damped signed distance of the user's own rating from neutral:
+         * `(평균 − 중간값) × n/(n+1)`, and zero with no ratings. Orders candidates
+         * the scored sources leave tied; never outranks them.
+         */
+        val ratingAdjust: Double,
         val blockedBy: String?,
     ) {
         val offerable: Boolean get() = blockedBy == null
@@ -144,25 +150,46 @@ class Recommender(private val catalog: SyntheticCatalog) {
         val conditionTraits = conditionTraitTokens(state)
         val unusable = catalog.unusableValueTokens()
 
-        return restaurant.menu
+        // A recommendation anchors the order on a main menu. Side menus are added
+        // as accompanying lines from their own surface, not ranked against mains.
+        return catalog.mainMenus(restaurant)
             .map { item ->
                 val reasons = mutableListOf<Reason>()
                 var score = 0
 
-                conditionTraits.intersect(item.traits.toSet()).sorted().forEach { trait ->
+                // One trait earns one reason at its strongest source. A value that
+                // is both stated today and stored would otherwise be counted twice
+                // and listed twice, which reads as padding and inflates the score.
+                val traits = item.traits.toSet()
+                val fromCondition = conditionTraits intersect traits
+                val fromPreference = (active intersect traits) - fromCondition
+                val fromOutcome = (outcomeTraits intersect traits) - fromCondition - fromPreference
+
+                fromCondition.sorted().forEach { trait ->
                     score += CONDITION_WEIGHT
                     reasons += Reason("오늘 입력", catalog.valueLabel(trait))
                 }
-                active.intersect(item.traits.toSet()).sorted().forEach { trait ->
+                fromPreference.sorted().forEach { trait ->
                     score += PREFERENCE_WEIGHT
                     reasons += Reason("직접 저장", catalog.valueLabel(trait))
                 }
-                outcomeTraits.intersect(item.traits.toSet()).sorted().forEach { trait ->
+                fromOutcome.sorted().forEach { trait ->
                     score += OUTCOME_WEIGHT
                     reasons += Reason("지난 평가", catalog.valueLabel(trait))
                 }
                 if (item.etaMinutes != null) {
                     reasons += Reason("현재 메뉴정보", "${item.etaMinutes}분")
+                }
+
+                val rating = ratings[item.token] ?: Tally.empty(catalog.ratingScaleMax)
+                val ratingAdjust = ratingAdjustOf(rating)
+                if (rating.count > 0) {
+                    // The user's own record of this exact pair is a visible reason,
+                    // subordinate to everything above.
+                    reasons += Reason(
+                        "내 평점",
+                        "%.1f/%d (%d건)".format(rating.average, rating.scaleMax, rating.count),
+                    )
                 }
 
                 val blockedBy = when {
@@ -171,6 +198,7 @@ class Recommender(private val catalog: SyntheticCatalog) {
                         "예산 ${pricing.formatAmount(budget)} 초과"
                     etaLimit != null && (item.etaMinutes ?: 0) > etaLimit ->
                         "희망 ${etaLimit}분 초과"
+                    // A rating never blocks a choice; only hard facts do.
                     else -> null
                 }
 
@@ -181,22 +209,30 @@ class Recommender(private val catalog: SyntheticCatalog) {
                     estimateMinutes = item.etaMinutes ?: 0,
                     score = score,
                     reasons = reasons,
-                    // Shown so the user can compare, and deliberately not part of
-                    // the score above.
-                    rating = ratings[item.token] ?: Tally.empty(catalog.ratingScaleMax),
+                    rating = rating,
+                    ratingAdjust = ratingAdjust,
                     blockedBy = blockedBy,
                 )
             }
-            // Ties break on the cheaper and then the faster item, so the order is
+            // The rating orders only what the scored sources leave tied; remaining
+            // ties break on the cheaper and then the faster item, so the order is
             // total and the same every run.
             .sortedWith(
                 compareBy<Candidate> { it.blockedBy != null }
                     .thenByDescending { it.score }
+                    .thenByDescending { it.ratingAdjust }
                     .thenBy { it.amount }
                     .thenBy { it.estimateMinutes }
                     .thenBy { it.valueToken },
             )
             .take(limit)
+    }
+
+    /** `(평균 − 중간값) × n/(n+1)`; zero with no ratings of this exact pair. */
+    private fun ratingAdjustOf(rating: Tally): Double {
+        val average = rating.average ?: return 0.0
+        val neutral = (1 + rating.scaleMax) / 2.0
+        return (average - neutral) * rating.count / (rating.count + 1.0)
     }
 
     /** Trait tokens the user stated for this order. */

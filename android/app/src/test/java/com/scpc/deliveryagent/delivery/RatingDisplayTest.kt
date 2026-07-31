@@ -11,11 +11,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Ratings the user left on earlier orders, shown so they can compare.
+ * Ratings the user left on earlier orders, as recommendation evidence for the
+ * exact restaurant-menu pair they rated.
  *
- * The property under test is that they are shown and not scored: the average
- * appears next to the price and the estimate, and the ranking is exactly what it
- * would be without any ratings at all.
+ * The contract under test: a rating is a visible, subordinate reason. It orders
+ * candidates that the stated conditions and stored preferences leave tied —
+ * damped by how few ratings exist — and never climbs over what the user asked
+ * for, never blocks a choice, never crosses restaurants, and ranks identically
+ * in both comparison arms so no measured gain comes from it.
  */
 class RatingDisplayTest {
 
@@ -49,7 +52,7 @@ class RatingDisplayTest {
         text: String = "",
     ) {
         surface.nextOrderSession(restaurant)
-        surface.chooseLine(restaurant, catalog.slot(Slots.MAIN), line)
+        surface.addLine(restaurant, line)
         catalog.slotsOf(restaurant)
             .filter { it.required && it.scopeToken != Slots.MAIN }
             .forEach { slot ->
@@ -123,9 +126,9 @@ class RatingDisplayTest {
     }
 
     @Test
-    fun `ratings do not move the ranking`() {
-        // One run with no ratings, one where the lower-ranked line is rated well and
-        // the higher-ranked line is rated badly. The order must be identical.
+    fun `a rating never climbs over conditions and preferences`() {
+        // One run with no ratings, one where the lower-ranked menu is rated well
+        // and the higher-ranked menu badly. What the user asked for still wins.
         fun ranking(withRatings: Boolean): List<String> {
             val surface = surface()
             surface.startNewOrder(daon)
@@ -150,19 +153,64 @@ class RatingDisplayTest {
     }
 
     @Test
-    fun `a rating is never a reason for the ranking`() {
+    fun `a rating orders candidates the stated sources leave tied, in both arms`() {
+        // No conditions and no option choices at all: both menus score zero, and
+        // without ratings the cheaper one leads. A good rating on the dearer menu
+        // is the only difference between them, so it decides — identically in
+        // each arm.
+        fun ranking(asprEnabled: Boolean): List<String> {
+            val surface = surface(asprEnabled = asprEnabled)
+            surface.startNewOrder(daon)
+            surface.addLine(daon, "menu.daon.spicy")
+            surface.submitReview(daon, "rating.good", "")
+            surface.nextOrderSession(daon)
+            return recommender.candidates(surface.state(), daon).map { it.valueToken }
+        }
+
+        val full = ranking(asprEnabled = true)
+        val claimOff = ranking(asprEnabled = false)
+        assertEquals("the rated menu leads an otherwise tied list", "menu.daon.spicy", full.first())
+        assertEquals(
+            "rating evidence is shared infrastructure and ranks the same in both arms",
+            full,
+            claimOff,
+        )
+    }
+
+    @Test
+    fun `the rating is a visible subordinate reason`() {
         val surface = surface()
         surface.startNewOrder(daon)
         orderAndRate(surface, daon, "menu.daon.clear", "rating.good")
 
-        recommender.candidates(surface.state(), daon).forEach { candidate ->
-            candidate.reasons.forEach { reason ->
-                assertTrue(
-                    "'${reason.badge}' must not be a rating badge",
-                    reason.badge in setOf("오늘 입력", "직접 저장", "지난 평가", "현재 메뉴정보"),
-                )
-            }
-        }
+        val rated = recommender.candidates(surface.state(), daon)
+            .single { it.valueToken == "menu.daon.clear" }
+        assertTrue(
+            "the user can see their own rating among the reasons",
+            rated.reasons.any { it.badge == "내 평점" },
+        )
+        assertTrue(rated.ratingAdjust > 0.0)
+
+        val unrated = recommender.candidates(surface.state(), daon)
+            .single { it.valueToken == "menu.daon.spicy" }
+        assertEquals(0.0, unrated.ratingAdjust, 0.0)
+        assertTrue(unrated.reasons.none { it.badge == "내 평점" })
+    }
+
+    @Test
+    fun `one rating is damped so it cannot swing like many`() {
+        val surface = surface()
+        surface.startNewOrder(daon)
+        orderAndRate(surface, daon, "menu.daon.clear", "rating.good")
+        val afterOne = recommender.candidates(surface.state(), daon)
+            .single { it.valueToken == "menu.daon.clear" }.ratingAdjust
+
+        orderAndRate(surface, daon, "menu.daon.clear", "rating.good")
+        val afterTwo = recommender.candidates(surface.state(), daon)
+            .single { it.valueToken == "menu.daon.clear" }.ratingAdjust
+
+        assertTrue("more ratings weigh more", afterTwo > afterOne)
+        assertTrue("the weight never reaches the raw distance", afterTwo < 2.0)
     }
 
     @Test

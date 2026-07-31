@@ -1,9 +1,52 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "artifact_kind": "synthetic_delivery_catalog",
   "provenance": "참가자가 직접 작성한 가상 데이터다. 실제 식당·메뉴·가격·재고·주소·연락처·계정과 무관하며 어떤 외부 서비스에서도 가져오지 않았다. 값은 런타임에 무작위로 생성하지 않으므로 full arm과 claim-off arm이 같은 byte에서 출발한다. 자연어 표현 목록도 데이터이므로 판단 코드가 문장을 해석하지 않는다.",
   "currency": "KRW_SYNTHETIC",
   "delivery_alias": "합성 배달지 A",
+  "menu_types": [
+    {
+      "token": "menutype.soup_meal",
+      "label": "국물 식사",
+      "course": "main",
+      "stable_option_slots": [
+        "option.rice",
+        "option.saltiness",
+        "option.egg"
+      ]
+    },
+    {
+      "token": "menutype.tteokbokki",
+      "label": "떡볶이",
+      "course": "main",
+      "stable_option_slots": [
+        "option.spiciness",
+        "option.cheese"
+      ]
+    },
+    {
+      "token": "menutype.mala",
+      "label": "마라 요리",
+      "course": "main",
+      "stable_option_slots": [
+        "option.spiciness",
+        "option.cilantro",
+        "option.tofu"
+      ]
+    },
+    {
+      "token": "menutype.side_fried",
+      "label": "튀김 사이드",
+      "course": "side",
+      "stable_option_slots": []
+    },
+    {
+      "token": "menutype.side_rice",
+      "label": "밥류 사이드",
+      "course": "side",
+      "stable_option_slots": []
+    }
+  ],
   "scope_phrases": {
     "this_order_only": [
       "이번 주문만",
@@ -252,41 +295,163 @@
       ]
     },
     {
-      "scope_token": "option.side",
+      "scope_token": "option.quantity",
       "kind": "menu_option",
-      "label": "사이드",
+      "label": "수량",
+      "priced": false,
+      "required": false,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "qty.1",
+          "label": "1개",
+          "price_delta": 0,
+          "phrases": [
+            "한 개만",
+            "하나만",
+            "1개만"
+          ]
+        },
+        {
+          "token": "qty.2",
+          "label": "2개",
+          "price_delta": 0,
+          "phrases": [
+            "두 개",
+            "두개",
+            "2개",
+            "두 그릇"
+          ]
+        },
+        {
+          "token": "qty.3",
+          "label": "3개",
+          "price_delta": 0,
+          "phrases": [
+            "세 개",
+            "세개",
+            "3개"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.cilantro",
+      "kind": "menu_option",
+      "label": "고수",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "cilantro.exclude",
+          "label": "빼기",
+          "price_delta": 0,
+          "phrases": [
+            "고수 빼고",
+            "고수 빼줘",
+            "고수 제외",
+            "고수는 빼",
+            "고수 없이"
+          ]
+        },
+        {
+          "token": "cilantro.keep",
+          "label": "그대로",
+          "price_delta": 0,
+          "phrases": [
+            "고수 넣어",
+            "고수 그대로",
+            "고수 추가"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.egg",
+      "kind": "menu_option",
+      "label": "계란",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "egg.exclude",
+          "label": "빼기",
+          "price_delta": 0,
+          "phrases": [
+            "계란 빼고",
+            "계란 빼줘",
+            "계란 제외",
+            "계란은 빼"
+          ]
+        },
+        {
+          "token": "egg.keep",
+          "label": "그대로",
+          "price_delta": 0,
+          "phrases": [
+            "계란 넣어",
+            "계란 그대로"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.tofu",
+      "kind": "menu_option",
+      "label": "두부",
       "priced": true,
       "required": false,
       "value_kind": "enumerated",
       "values": [
         {
-          "token": "side.dumpling",
-          "label": "바삭 만두",
-          "price_delta": 3500,
-          "in_stock": true,
+          "token": "tofu.add",
+          "label": "추가",
+          "price_delta": 1500,
           "phrases": [
-            "만두",
-            "바삭 만두",
-            "만두 추가",
-            "튀김만두"
+            "두부 추가",
+            "두부 넣어",
+            "두부도"
           ]
         },
         {
-          "token": "side.rice_ball",
-          "label": "주먹밥",
-          "price_delta": 2800,
-          "in_stock": true,
+          "token": "tofu.none",
+          "label": "안 넣기",
+          "price_delta": 0,
           "phrases": [
-            "주먹밥",
-            "주먹밥 추가"
+            "두부 빼고",
+            "두부 없이"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.cheese",
+      "kind": "menu_option",
+      "label": "치즈",
+      "priced": true,
+      "required": false,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "cheese.add",
+          "label": "추가",
+          "price_delta": 1000,
+          "phrases": [
+            "치즈 추가",
+            "치즈 올려",
+            "치즈도"
           ]
         },
         {
-          "token": "side.dumpling.soldout",
-          "label": "바삭 만두",
-          "price_delta": 3500,
-          "in_stock": false,
-          "phrases": []
+          "token": "cheese.none",
+          "label": "안 넣기",
+          "price_delta": 0,
+          "phrases": [
+            "치즈 빼고",
+            "치즈 없이"
+          ]
         }
       ]
     },
@@ -416,13 +581,24 @@
       "option_slots": [
         "option.main",
         "option.spiciness",
+        "option.saltiness",
         "option.rice",
+        "option.utensil",
+        "option.quantity"
+      ],
+      "order_level_slots": [
         "option.utensil"
       ],
       "menu": [
         {
           "token": "menu.daon.clear",
           "label": "맑은 닭곰탕",
+          "menu_type": "menutype.soup_meal",
+          "line_option_slots": [
+            "option.spiciness",
+            "option.saltiness",
+            "option.rice"
+          ],
           "price_delta": 11500,
           "in_stock": true,
           "eta_minutes": 28,
@@ -440,6 +616,12 @@
         {
           "token": "menu.daon.spicy",
           "label": "얼큰 닭곰탕",
+          "menu_type": "menutype.soup_meal",
+          "line_option_slots": [
+            "option.spiciness",
+            "option.saltiness",
+            "option.rice"
+          ],
           "price_delta": 12000,
           "in_stock": true,
           "eta_minutes": 30,
@@ -462,12 +644,20 @@
         "option.saltiness",
         "option.rice",
         "option.utensil",
-        "option.side"
+        "option.quantity"
+      ],
+      "order_level_slots": [
+        "option.utensil"
       ],
       "menu": [
         {
           "token": "menu.ongi.perilla",
           "label": "들깨 수제비",
+          "menu_type": "menutype.soup_meal",
+          "line_option_slots": [
+            "option.saltiness",
+            "option.rice"
+          ],
           "price_delta": 10800,
           "in_stock": true,
           "eta_minutes": 26,
@@ -484,6 +674,11 @@
         {
           "token": "menu.ongi.tofu",
           "label": "순한 순두부",
+          "menu_type": "menutype.soup_meal",
+          "line_option_slots": [
+            "option.saltiness",
+            "option.rice"
+          ],
           "price_delta": 10200,
           "in_stock": true,
           "eta_minutes": 24,
@@ -496,6 +691,47 @@
             "순한 순두부",
             "순두부"
           ]
+        },
+        {
+          "token": "menu.ongi.dumpling",
+          "label": "바삭 만두",
+          "menu_type": "menutype.side_fried",
+          "line_option_slots": [],
+          "price_delta": 3500,
+          "in_stock": true,
+          "eta_minutes": 20,
+          "traits": [],
+          "phrases": [
+            "만두",
+            "바삭 만두",
+            "만두 추가",
+            "튀김만두"
+          ]
+        },
+        {
+          "token": "menu.ongi.riceball",
+          "label": "주먹밥",
+          "menu_type": "menutype.side_rice",
+          "line_option_slots": [],
+          "price_delta": 2800,
+          "in_stock": true,
+          "eta_minutes": 15,
+          "traits": [],
+          "phrases": [
+            "주먹밥",
+            "주먹밥 추가"
+          ]
+        },
+        {
+          "token": "menu.ongi.dumpling.soldout",
+          "label": "바삭 만두",
+          "menu_type": "menutype.side_fried",
+          "line_option_slots": [],
+          "price_delta": 3500,
+          "in_stock": false,
+          "eta_minutes": 20,
+          "traits": [],
+          "phrases": []
         }
       ]
     },
@@ -507,12 +743,19 @@
         "option.spiciness",
         "option.rice",
         "option.utensil",
-        "option.side"
+        "option.quantity"
+      ],
+      "order_level_slots": [
+        "option.utensil"
       ],
       "menu": [
         {
           "token": "menu.bulkkot.hot",
           "label": "매운 떡볶이",
+          "menu_type": "menutype.tteokbokki",
+          "line_option_slots": [
+            "option.spiciness"
+          ],
           "price_delta": 9500,
           "in_stock": true,
           "eta_minutes": 22,
@@ -528,6 +771,10 @@
         {
           "token": "menu.bulkkot.mild",
           "label": "순한 떡볶이",
+          "menu_type": "menutype.tteokbokki",
+          "line_option_slots": [
+            "option.spiciness"
+          ],
           "price_delta": 9500,
           "in_stock": true,
           "eta_minutes": 22,
@@ -541,15 +788,259 @@
           ]
         }
       ]
+    },
+    {
+      "entity_token": "restaurant.hanbam",
+      "name": "한밤국수 실험점",
+      "option_slots": [
+        "option.main",
+        "option.saltiness",
+        "option.rice",
+        "option.egg",
+        "option.utensil",
+        "option.quantity"
+      ],
+      "order_level_slots": [
+        "option.utensil"
+      ],
+      "menu": [
+        {
+          "token": "menu.hanbam.janchi",
+          "label": "잔치국수",
+          "menu_type": "menutype.soup_meal",
+          "line_option_slots": [
+            "option.saltiness",
+            "option.rice",
+            "option.egg"
+          ],
+          "price_delta": 9800,
+          "in_stock": true,
+          "eta_minutes": 21,
+          "traits": [
+            "warmth.soup",
+            "spice.mild",
+            "salt.light"
+          ],
+          "phrases": [
+            "잔치국수",
+            "잔치 국수"
+          ]
+        },
+        {
+          "token": "menu.hanbam.kalguksu",
+          "label": "얼큰 칼국수",
+          "menu_type": "menutype.soup_meal",
+          "line_option_slots": [
+            "option.saltiness",
+            "option.rice",
+            "option.egg"
+          ],
+          "price_delta": 11200,
+          "in_stock": true,
+          "eta_minutes": 25,
+          "traits": [
+            "warmth.soup",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "얼큰 칼국수",
+            "칼국수"
+          ]
+        },
+        {
+          "token": "menu.hanbam.gimbap",
+          "label": "기본 김밥",
+          "menu_type": "menutype.side_rice",
+          "line_option_slots": [],
+          "price_delta": 3200,
+          "in_stock": true,
+          "eta_minutes": 12,
+          "traits": [
+            "warmth.light"
+          ],
+          "phrases": [
+            "기본 김밥",
+            "김밥"
+          ]
+        }
+      ]
+    },
+    {
+      "entity_token": "restaurant.marahyang",
+      "name": "마라향 실험점",
+      "option_slots": [
+        "option.main",
+        "option.spiciness",
+        "option.cilantro",
+        "option.tofu",
+        "option.utensil",
+        "option.quantity"
+      ],
+      "order_level_slots": [
+        "option.utensil"
+      ],
+      "offered_values": {
+        "option.spiciness": [
+          "spice.mild",
+          "spice.very_hot"
+        ]
+      },
+      "menu": [
+        {
+          "token": "menu.marahyang.malatang",
+          "label": "마라탕",
+          "menu_type": "menutype.mala",
+          "line_option_slots": [
+            "option.spiciness",
+            "option.cilantro",
+            "option.tofu"
+          ],
+          "price_delta": 12500,
+          "in_stock": true,
+          "eta_minutes": 27,
+          "traits": [
+            "warmth.soup",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "마라탕"
+          ]
+        },
+        {
+          "token": "menu.marahyang.malaxiangguo",
+          "label": "마라샹궈",
+          "menu_type": "menutype.mala",
+          "line_option_slots": [
+            "option.spiciness",
+            "option.cilantro",
+            "option.tofu"
+          ],
+          "price_delta": 14000,
+          "in_stock": true,
+          "eta_minutes": 29,
+          "traits": [
+            "warmth.light",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "마라샹궈"
+          ]
+        },
+        {
+          "token": "menu.marahyang.guobaorou",
+          "label": "꿔바로우",
+          "menu_type": "menutype.side_fried",
+          "line_option_slots": [],
+          "price_delta": 5200,
+          "in_stock": true,
+          "eta_minutes": 18,
+          "traits": [
+            "warmth.light"
+          ],
+          "phrases": [
+            "꿔바로우"
+          ]
+        },
+        {
+          "token": "menu.marahyang.guobaorou.soldout",
+          "label": "꿔바로우",
+          "menu_type": "menutype.side_fried",
+          "line_option_slots": [],
+          "price_delta": 5200,
+          "in_stock": false,
+          "eta_minutes": 18,
+          "traits": [],
+          "phrases": []
+        }
+      ]
+    },
+    {
+      "entity_token": "restaurant.geumson",
+      "name": "금손분식 실험점",
+      "option_slots": [
+        "option.main",
+        "option.spiciness",
+        "option.cheese",
+        "option.cilantro",
+        "option.utensil",
+        "option.quantity"
+      ],
+      "order_level_slots": [
+        "option.utensil"
+      ],
+      "menu": [
+        {
+          "token": "menu.geumson.soup_tteok",
+          "label": "국물 떡볶이",
+          "menu_type": "menutype.tteokbokki",
+          "line_option_slots": [
+            "option.spiciness",
+            "option.cheese"
+          ],
+          "price_delta": 9800,
+          "in_stock": true,
+          "eta_minutes": 23,
+          "traits": [
+            "warmth.soup",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "국물 떡볶이"
+          ]
+        },
+        {
+          "token": "menu.geumson.mala_tteok",
+          "label": "마라 떡볶이",
+          "menu_type": "menutype.mala",
+          "line_option_slots": [
+            "option.spiciness",
+            "option.cilantro"
+          ],
+          "price_delta": 11000,
+          "in_stock": true,
+          "eta_minutes": 24,
+          "traits": [
+            "warmth.light",
+            "spice.very_hot"
+          ],
+          "phrases": [
+            "마라 떡볶이"
+          ]
+        },
+        {
+          "token": "menu.geumson.cheese_gimbap",
+          "label": "치즈 김밥",
+          "menu_type": "menutype.side_rice",
+          "line_option_slots": [],
+          "price_delta": 4000,
+          "in_stock": true,
+          "eta_minutes": 13,
+          "traits": [
+            "warmth.light"
+          ],
+          "phrases": [
+            "치즈 김밥"
+          ]
+        }
+      ]
     }
   ],
   "catalog_events": [
     {
-      "event_token": "catalog.ongi.side.dumpling.soldout",
+      "event_token": "catalog.ongi.menu.dumpling.soldout",
       "entity_token": "restaurant.ongi",
-      "scope_token": "option.side",
-      "value_token": "side.dumpling.soldout",
-      "description": "사이드 한 줄만 더 높은 catalog version으로 품절 처리된다. 본 메뉴와 독립 option은 건드리지 않는다."
+      "scope_token": "option.main",
+      "value_token": "menu.ongi.dumpling.soldout",
+      "replaces_value": "menu.ongi.dumpling",
+      "description": "사이드 주문 항목 한 줄만 더 높은 catalog version으로 품절 처리된다. 다른 주문 항목과 독립 option은 건드리지 않는다."
+    },
+    {
+      "event_token": "catalog.marahyang.menu.guobaorou.soldout",
+      "entity_token": "restaurant.marahyang",
+      "scope_token": "option.main",
+      "value_token": "menu.marahyang.guobaorou.soldout",
+      "replaces_value": "menu.marahyang.guobaorou",
+      "description": "사이드 주문 항목 한 줄만 더 높은 catalog version으로 품절 처리된다. 본 메뉴와 그 항목의 옵션은 건드리지 않는다."
     },
     {
       "event_token": "catalog.daon.main.price_up",
@@ -565,6 +1056,12 @@
       "label": "좋았어요",
       "sentiment": "positive",
       "score": 5
+    },
+    {
+      "token": "rating.nice",
+      "label": "좋은 편이었어요",
+      "sentiment": "positive",
+      "score": 4
     },
     {
       "token": "rating.ok",
@@ -626,6 +1123,42 @@
       "phrase": "양이 적었",
       "slot": "option.rice",
       "implies_value": "rice.large",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "고수가 강했",
+      "slot": "option.cilantro",
+      "implies_value": "cilantro.exclude",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "고수 향이 세",
+      "slot": "option.cilantro",
+      "implies_value": "cilantro.exclude",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "고수는 못 먹겠",
+      "slot": "option.cilantro",
+      "implies_value": "cilantro.exclude",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "치즈가 아쉬웠",
+      "slot": "option.cheese",
+      "implies_value": "cheese.add",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "두부가 아쉬웠",
+      "slot": "option.tofu",
+      "implies_value": "tofu.add",
+      "sentiment": "negative"
+    },
+    {
+      "phrase": "계란이 별로",
+      "slot": "option.egg",
+      "implies_value": "egg.exclude",
       "sentiment": "negative"
     },
     {

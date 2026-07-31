@@ -126,10 +126,10 @@ class ChatIntakeTest {
 
     @Test
     fun `an option this restaurant does not offer becomes a question`() {
-        // 다온국밥 has no saltiness option.
-        val read = intake.read("간 약하게 해줘", context(daon))
-        assertTrue(read.values.none { it.scopeToken == Slots.SALTINESS })
-        assertTrue(read.questions.any { it.about == Slots.SALTINESS })
+        // 온기한상 has no spiciness option.
+        val read = intake.read("맵지 않게 해줘", context(ongi))
+        assertTrue(read.values.none { it.scopeToken == Slots.SPICINESS })
+        assertTrue(read.questions.any { it.about == Slots.SPICINESS })
     }
 
     @Test
@@ -179,6 +179,18 @@ class ChatIntakeTest {
             surface.state().facts.values.first { it.value == "spice.mild" }.kind,
         )
         assertEquals("budget.20000", surface.field(Slots.BUDGET)?.value)
+    }
+
+    @Test
+    fun `a budget the catalog never listed is applied, not refused`() {
+        // The parser resolves any well-formed amount, so the draft has to accept
+        // one too; presets are examples, not the set of allowed budgets.
+        val surface = surface()
+        surface.startNewOrder(daon)
+        surface.say(daon, "13500원 이하로 해줘")
+
+        assertEquals("budget.13500", surface.field(Slots.BUDGET)?.value)
+        assertEquals(13_500, DraftPricing(catalog).budgetLimit(surface.state()))
     }
 
     @Test

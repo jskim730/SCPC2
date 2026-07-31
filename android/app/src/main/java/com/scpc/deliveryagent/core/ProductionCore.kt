@@ -128,6 +128,40 @@ class ProductionCore(
     }
 
     /**
+     * Declares the order lines of the current draft together with the option
+     * schema.
+     *
+     * Like [declareOptionSchema] this is product data about the current synthetic
+     * menu, not a second decision path: which lines exist and which slots each
+     * line carries is what the user built on screen, and the engine still decides
+     * every value through the same selection, permission and dependency rules.
+     * Probe input declares no lines.
+     */
+    fun declareDraftStructure(
+        lines: List<DraftLineDecl>,
+        requiredSlotIds: Collection<String>,
+        neverAutoApplySlotIds: Collection<String> = emptySet(),
+        unusableValues: Collection<String> = emptySet(),
+    ) {
+        val state = loadState()
+        reconcileProcess(state)
+        state.draftLines.clear()
+        state.draftLines.addAll(lines)
+        // Every slot that ever belonged to a declared line of this draft stays
+        // registered, so a removed line's leftover facts can never re-surface as
+        // an order-level field.
+        lines.forEach { line -> line.slots.forEach { state.lineSlotRegistry += it.lineSlotId } }
+        state.requiredSlots.clear()
+        state.requiredSlots.addAll(requiredSlotIds)
+        state.neverAutoApplySlots.clear()
+        state.neverAutoApplySlots.addAll(neverAutoApplySlotIds)
+        state.unusableValues.clear()
+        state.unusableValues.addAll(unusableValues)
+        AsprEngine.project(state, "draft-structure")
+        store.save(state.encode())
+    }
+
+    /**
      * Records whether the current draft satisfies the constraints the user stated.
      *
      * Money and minutes are presentation, so the product surface evaluates them and
@@ -207,17 +241,38 @@ class ProductionCore(
         return reviewId
     }
 
-    /** Notes that a review is where one remembered value came from. */
-    fun linkReviewMemory(reviewId: String, valueToken: String) {
+    /** Notes that a review is where one remembered value and fact came from. */
+    fun linkReviewMemory(reviewId: String, valueToken: String, factId: String? = null) {
         val state = loadState()
         reconcileProcess(state)
         val index = state.reviews.indexOfFirst { it.reviewId == reviewId }
         if (index < 0) return
         val review = state.reviews[index]
-        if (valueToken in review.derivedValueTokens) return
+        val values = if (valueToken in review.derivedValueTokens) {
+            review.derivedValueTokens
+        } else {
+            review.derivedValueTokens + valueToken
+        }
+        val factIds = if (factId == null || factId in review.derivedFactIds) {
+            review.derivedFactIds
+        } else {
+            review.derivedFactIds + factId
+        }
+        if (values == review.derivedValueTokens && factIds == review.derivedFactIds) return
         state.reviews[index] = review.copy(
-            derivedValueTokens = review.derivedValueTokens + valueToken,
+            derivedValueTokens = values,
+            derivedFactIds = factIds,
         )
+        store.save(state.encode())
+    }
+
+    /** Settles which menu a review was about. */
+    fun setReviewTarget(reviewId: String, menuToken: String) {
+        val state = loadState()
+        reconcileProcess(state)
+        val index = state.reviews.indexOfFirst { it.reviewId == reviewId }
+        if (index < 0) return
+        state.reviews[index] = state.reviews[index].copy(lineValueToken = menuToken)
         store.save(state.encode())
     }
 
@@ -234,6 +289,34 @@ class ProductionCore(
         val review = state.reviews.firstOrNull { it.reviewId == reviewId } ?: return
         state.reviews.removeAll { it.reviewId == reviewId }
 
+        fun removeFactWithMarker(fact: Fact) {
+            state.facts.remove(fact.factId)
+            val tombstone = Tombstone(
+                tombstoneId = Ids.state("tomb", fact.slotId),
+                slotId = fact.slotId,
+                scopeIds = fact.scopeIds,
+                authorityVersion = fact.authorityVersion,
+                deletedAtVirtual = state.virtualNow,
+                kind = fact.kind,
+                seq = state.nextSeq(),
+            )
+            state.tombstones[tombstone.tombstoneId] = tombstone
+            state.fields.values
+                .filter { it.dependsOn(fact.factId) }
+                .map { it.fieldId }
+                .forEach(state.fields::remove)
+            AsprEngine.invalidateDescendants(
+                state,
+                refs = setOf(fact.factId),
+                kinds = setOf(DepKind.HARD_VALUE, DepKind.RANKING),
+            )
+        }
+
+        // Exactly the scoped facts this review produced. A same-valued preference
+        // the user stated independently keeps living under its own fact id.
+        review.derivedFactIds.forEach { factId ->
+            state.facts[factId]?.let(::removeFactWithMarker)
+        }
         review.derivedValueTokens.forEach { valueToken ->
             val outcomeId = Ids.state("outcome", valueToken)
             state.pendingOutcomes.removeAll { it.outcomeId == outcomeId }
@@ -241,28 +324,7 @@ class ProductionCore(
             state.facts.values
                 .filter { it.kind == FactKind.OUTCOME && it.value == valueToken }
                 .toList()
-                .forEach { fact ->
-                    state.facts.remove(fact.factId)
-                    val tombstone = Tombstone(
-                        tombstoneId = Ids.state("tomb", fact.slotId),
-                        slotId = fact.slotId,
-                        scopeIds = fact.scopeIds,
-                        authorityVersion = fact.authorityVersion,
-                        deletedAtVirtual = state.virtualNow,
-                        kind = fact.kind,
-                        seq = state.nextSeq(),
-                    )
-                    state.tombstones[tombstone.tombstoneId] = tombstone
-                    state.fields.values
-                        .filter { it.dependsOn(fact.factId) }
-                        .map { it.fieldId }
-                        .forEach(state.fields::remove)
-                    AsprEngine.invalidateDescendants(
-                        state,
-                        refs = setOf(fact.factId),
-                        kinds = setOf(DepKind.HARD_VALUE, DepKind.RANKING),
-                    )
-                }
+                .forEach(::removeFactWithMarker)
         }
         AsprEngine.project(state, "review-delete")
         store.save(state.encode())
@@ -746,6 +808,7 @@ class ProductionCore(
                     slotId = pending.slotId,
                     scopeIds = pending.scopeIds,
                     arrived = arrived,
+                    expiresAtVirtual = pending.expiresAtVirtual,
                 )
                 state.pendingOutcomes.remove(pending)
             }
@@ -795,6 +858,8 @@ class ProductionCore(
         // A new order session starts a new draft. The previous order stays in the
         // action ledger; it is not silently carried into the new one.
         state.fields.clear()
+        state.draftLines.clear()
+        state.lineSlotRegistry.clear()
     }
 
     private fun updateContext(state: ProductionState, view: RoleView) {
@@ -844,6 +909,12 @@ class ProductionCore(
         } else {
             state.authorityVersionOf(authorityToken)
         }
+        // Structural scope of the value, when the product surface addressed one.
+        // Absent on every official probe step, so those store unscoped facts.
+        val baseScopeToken = view.value(RoleExt.BASE_SCOPE)
+        val scopeSpecificity = view.value(RoleExt.SPECIFICITY)?.toIntOrNull() ?: 0
+        val scopeMenuTypeId = view.value(RoleExt.MENU_TYPE_ID)
+        val scopeMenuId = view.value(RoleExt.SCOPE_MENU_ID)
         val stored = mutableListOf<String>()
         val rejected = mutableListOf<String>()
 
@@ -898,6 +969,10 @@ class ProductionCore(
                 createdAtVirtual = state.virtualNow,
                 expiresAtVirtual = null,
                 seq = state.nextSeq(),
+                baseSlotId = baseScopeToken?.let { Ids.state("slot", it) },
+                specificity = scopeSpecificity,
+                menuTypeId = scopeMenuTypeId,
+                scopeMenuId = scopeMenuId,
             )
             stored += factId
         }
@@ -945,6 +1020,7 @@ class ProductionCore(
                     entityId = entityId,
                     scheduledAtVirtual = state.virtualNow,
                     seq = state.nextSeq(),
+                    expiresAtVirtual = view.value(RoleExt.EXPIRES_AT),
                 )
                 stored += outcomeId
             }
@@ -965,6 +1041,7 @@ class ProductionCore(
         slotId: String,
         scopeIds: List<String>,
         arrived: MutableList<String>,
+        expiresAtVirtual: String? = null,
     ) {
         val outcomeId = Ids.state("outcome", token)
         if (state.appliedOutcomes.containsKey(outcomeId)) return
@@ -988,7 +1065,7 @@ class ProductionCore(
             goalId = null,
             boundSessionId = state.sessionId,
             createdAtVirtual = state.virtualNow,
-            expiresAtVirtual = null,
+            expiresAtVirtual = expiresAtVirtual,
             seq = state.nextSeq(),
         )
         state.appliedOutcomes[outcomeId] = AppliedOutcome(

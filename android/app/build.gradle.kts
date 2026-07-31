@@ -1,6 +1,29 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+/**
+ * Release signing material, read from `android/keystore.properties`.
+ *
+ * That file and the keystore it points at are never committed: the official
+ * rules require the participant to keep the signing private key, keystore and
+ * password themselves, and forbid shipping any credential in the APK or source.
+ * `keystore.properties.example` documents the four keys to fill in.
+ *
+ * Only the release build needs them, so an absent file leaves debug builds and
+ * the JVM tests working exactly as before. `assembleRelease` then fails with an
+ * explicit message rather than quietly producing an unsigned APK.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val releaseSigningReady = releaseSigningKeys.all { key ->
+    !keystoreProperties.getProperty(key).isNullOrBlank()
 }
 
 android {
@@ -21,9 +44,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                // Resolved against the Gradle root (`android/`), so the keystore can
+                // sit outside the repository entirely.
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Kept off so the submitted APK corresponds line for line with the
+            // source bundle it ships with.
             isMinifyEnabled = false
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -40,6 +81,22 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 }
+
+/**
+ * An unsigned release APK cannot be installed, and the official tooling reads the
+ * certificate from the APK itself, so producing one by accident would waste a
+ * rehearsal. Packaging is refused outright instead.
+ */
+tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }
+    .configureEach {
+        doFirst {
+            check(releaseSigningReady) {
+                "release signing is not configured. Copy keystore.properties.example to " +
+                    "android/keystore.properties and fill in storeFile, storePassword, " +
+                    "keyAlias and keyPassword. Neither that file nor the keystore is committed."
+            }
+        }
+    }
 
 dependencies {
     implementation(files("libs/scpc-probe-starter-3.0.0-draft.aar"))

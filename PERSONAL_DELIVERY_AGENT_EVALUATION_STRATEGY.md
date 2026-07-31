@@ -4,7 +4,7 @@
 
 - 상태: `MISSION_SUBMITTED_USER_FROZEN_PENDING_OFFICIAL_LOCK`
 - 작성일: `2026-07-29 KST`
-- 구현 상태: 시작하지 않음
+- 구현 상태: `android/`에서 진행 중 — 코드 기준은 `android/IMPLEMENTATION_STATUS.md`
 - 선행 문서: `PERSONAL_DELIVERY_AGENT_UX_SPEC.md`
 - 공식 기준: `COMPETITION_CONTEXT.md`, `release_v3/candidate_kit/`
 
@@ -200,6 +200,7 @@ ephemeral fact와 그 descendant를 제거하고, 복원 가능한 원문 없이
 다음은 `full`과 `claim-off`가 공통으로 사용한다. Signature의 공로로 주장하지 않는다.
 
 - 채팅 UI와 자연어 parser/model
+- 내 평점의 동일 `(식당, 메뉴)` 추천 근거 반영과 count-aware smoothing
 - 합성 식당·메뉴 catalog
 - 기본 추천 점수와 현재 session 입력
 - 최종 주문 확인과 app-local simulation
@@ -231,6 +232,7 @@ ephemeral fact와 그 descendant를 제거하고, 복원 가능한 원문 없이
 ### 비교군이 할 수 있는 것
 
 - 같은 채팅·화면·parser/model·catalog·추천 점수를 사용한다.
+- 내 평점을 `full`과 같은 방식으로 동일 `(식당, 메뉴)` 후보의 추천 근거에 반영한다.
 - 현재 session에서 사용자가 말한 조건은 정상 반영한다.
 - 최근 주문을 사용자가 볼 수 있고 “다시 주문” 출발점으로 쓸 수 있다.
 - 최종 확인, 삭제, 재시작, idempotency, 안전 상태표시는 그대로 동작한다.
@@ -348,8 +350,8 @@ override로 승격한다.
 권한과, catalog의 `menu_type_id`가 같을 때 밥 양 보통 취향을 선택적으로 재사용한다. E1의 식당·메뉴별
 `간 약하게` override는 대상 쌍이 다르므로 제외한다.
 더 최근이더라도 다른 식당·목표의 distractor는 선택하지 않는다. 주문 뒤 지연 평가 요청에서 식당 B의
-선택 메뉴에 대한 옵션 리뷰를 남기고, 사용자가 범위와 자동 적용을 승인하면 식당 B·선택 메뉴 scoped
-override를 만든다. 이때 질문·재입력이 E1과 `claim-off`보다 줄어든다.
+선택 메뉴에 대한 내 평점과 옵션 리뷰를 남기고, 사용자가 범위와 자동 적용을 승인하면 식당 B·선택 메뉴
+scoped override를 만든다. 이때 질문·재입력이 E1과 `claim-off`보다 줄어든다.
 
 ### E3 — Exception
 
@@ -367,7 +369,8 @@ authority로 적용된다. 본 메뉴와 사이드를 포함한 주문안에서 
 사이드 선택 중 실제 process kill·relaunch가 발생해도 checkpoint로 돌아오며, duplicate action과 오래된
 재고 event를 반영하지 않는다. 초안에 쓰인 합성 일회성 요청 메모를 삭제하면 원문·파생 field를 제거하고
 tombstone만 남겨 재실행 뒤에도 부활하지 않게 한다. E3에서 자동 적용 권한을 철회했으므로 수저 여부는
-다시 묻는다.
+다시 묻는다. 식당 B 추천·초안에서는 E2의 내 평점이 동일 `(식당, 메뉴)` 후보의 근거 badge로 표시된다.
+내 평점 반영은 양 arm 공통이므로 ASPR의 인과 이득으로 세지 않는다.
 
 ### 뒤 episode를 실제로 바꾸는 원인
 
@@ -521,7 +524,10 @@ app-local outcome 연속성을 다루지 않으면 선언한 Primary value를 �
 
 ---
 
-## 11. 구현 전 남은 승인 항목
+## 11. 구현 전 남은 승인 항목 — 종결 (2026-07-31)
+
+아래 다섯 항목은 2026-07-31 Mission 제출과 구현 착수로 승인 절차가 완료된 역사 기록이다. 현재 구현
+기준은 `android/IMPLEMENTATION_STATUS.md`다. 원문:
 
 다음 다섯 가지를 한 묶음으로 승인한 뒤 Mission 선언문을 작성한다.
 

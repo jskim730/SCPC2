@@ -4,13 +4,17 @@
 
 - 상태: `MISSION_SUBMITTED_USER_FROZEN_PENDING_OFFICIAL_LOCK`
 - 작성일: `2026-07-29 KST`
-- 구현 상태: 시작하지 않음
+- 구현 상태: `android/`에서 진행 중 — 코드 기준은 `android/IMPLEMENTATION_STATUS.md`
 - 목적: 제출 Mission 범위 안에서 제품 깊이, E1–E4 사용자 경험, 기억 권한, 화면 역할을 구체화하는 명세
 - 공식 사실의 기준: `COMPETITION_CONTEXT.md`와 `release_v3/`
 
 Mission 선언은 `2026-07-31 KST`에 제출되었으며 사용자가 최종본으로 확정했다. 동결된 내용의 기준은
 `SCPC2026_R2_MISSION_First_penguin.pdf`이다. 이 문서는 그 범위 안의 구현 명세이며,
 Dacon이 생성하는 `MISSION_LOCK.json`을 대신하지 않는다.
+
+2026-07-31 구현 확정 결정: ① 자연어 intake는 결정적 파서로 확정(모델 미탑재), ② UI는 대본 중심
+최소 범위(항목 추가는 추천 후보·사이드 탭 경유, 항목별 옵션·수량·제거 지원, 임의 메뉴 브라우징 제외),
+③ 코드 freeze `2026-08-03 밤`, 이후 기기 검증·산출물. 근거는 `android/IMPLEMENTATION_STATUS.md`.
 
 ---
 
@@ -545,7 +549,8 @@ virtual time 뒤 app-local 평가 요청이 정확히 한 번 도착하고, 사�
 
 - 가상 주문 초안 확인·가상 접수
 - 화면·persisted state·receipt에 같은 옵션과 총액 기록
-- 지연 평가 요청에서 사용자가 “이 집 들깨 수제비는 간이 셌다”는 리뷰를 남김
+- 지연 평가 요청에서 사용자가 내 평점 `★4`와 “이 집 들깨 수제비는 간이 셌다”는 리뷰를 남김
+- 내 평점은 동일 `(식당 B, 들깨 수제비)` 후보의 추천 근거로만 저장 — 옵션 자동 적용·차단에는 불사용
 - 사용자가 확인 질문에 동의해 `(식당 B, 들깨 수제비, 간 세기) → 약하게` scoped override 저장
 
 #### 다음 session에 미치는 변화
@@ -655,6 +660,8 @@ virtual time 뒤 app-local 평가 요청이 정확히 한 번 도착하고, 사�
 - 일회용 수저: permission이 철회되었으므로 확인 필요
 - 사이드: `바삭 만두`
 - 합성 일회성 요청 메모: `소스 별도 포장`
+- 본 메뉴 추천 근거에 E2의 내 평점 `★4` badge 표시 — 동일 `(식당 B, 들깨 수제비)`에만 반영되는
+  순위 근거이며, `간 세기 약하게`의 자동 적용 근거는 평점이 아니라 승인된 scoped override다
 
 #### synthetic catalog event
 

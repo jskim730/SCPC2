@@ -160,6 +160,7 @@ object AsprEngine {
     private fun precedence(state: ProductionState): Comparator<Fact> =
         if (state.asprEnabled) {
             compareByDescending<Fact> { it.kind.precedence }
+                .thenByDescending { it.specificity }
                 .thenByDescending { it.authorityVersion }
                 .thenByDescending { it.seq }
         } else {
@@ -215,88 +216,66 @@ object AsprEngine {
         val previous = state.fields.toMap()
         val rebuilt = linkedMapOf<String, DraftField>()
 
+        // Slots the declared lines own or distribute. The registry also covers
+        // lines removed earlier in this draft, so their leftover facts stay
+        // line-addressed. With no declared lines all sets are empty and projection
+        // keeps its one-field-per-slot shape, which is the shape every probe-path
+        // test exercises.
+        val lineSlotIds = state.lineSlotRegistry +
+            state.draftLines.flatMap { line -> line.slots.map { it.lineSlotId } }
+        val lineBaseSlotIds = state.draftLines
+            .flatMap { line -> line.slots.mapNotNull { it.baseSlotId } }
+            .toSet()
+
         selection.winners.toSortedMap().forEach { (slotId, winner) ->
-            val fieldId = fieldIdFor(slotId)
-            val prior = previous[fieldId]
-            val catalogEntity = winner.catalogEntityId
-            val revoked = state.asprEnabled &&
-                winner.scopeIds.any { it in state.revokedScopes }
-
-            // The current catalog cannot fulfil this value, so it is never treated
-            // as settled no matter where it came from.
-            val unusable = winner.value in state.unusableValues
-            val autoApplicable = when {
-                winner.confidence != Confidence.EXPLICIT -> false
-                unusable -> false
-                // The final menu, its lines and the total are the user's choice for
-                // each order, never an automatic application.
-                winner.slotId in state.neverAutoApplySlots -> false
-                !state.asprEnabled ->
-                    // Baseline cannot tell whether stored memory still applies to
-                    // this target, so it only reuses what this session stated.
-                    winner.boundSessionId == state.sessionId
-                revoked -> false
-                else -> winner.permission == Permission.AUTO_APPLY
-            }
-
-            val deps = mutableListOf(Dep(DepKind.HARD_VALUE, winner.factId))
-            if (state.asprEnabled) {
-                winner.scopeIds.sorted().forEach { deps += Dep(DepKind.PERMISSION, it) }
-                if (catalogEntity != null) {
-                    deps += Dep(
-                        DepKind.CATALOG,
-                        catalogDepRef(catalogEntity, slotId, winner.authorityVersion),
-                    )
-                }
-                selection.ranking[slotId].orEmpty().sortedBy { it.factId }.forEach {
-                    deps += Dep(DepKind.RANKING, it.factId)
-                }
-            }
-
-            // A new fact event for a slot the agent had asked about is the user's
-            // answer to that question.
-            val answered = prior != null &&
-                (prior.status == FieldStatus.NEEDS_CONFIRMATION || prior.status == FieldStatus.INVALIDATED) &&
-                winner.seq > prior.updatedSeq
-            // A slot's value always comes from the fact that currently wins it: a
-            // more current instruction, a correction or a catalog change is why the
-            // user asked for the draft in the first place. What survives is the fact
-            // that the user resolved this slot, which is what a revocation or the
-            // deletion of some other fact must not undo.
-            val userConfirmed = (prior?.userConfirmed == true || answered) && !unusable
-            val status = when {
-                unusable -> FieldStatus.NEEDS_CONFIRMATION
-                userConfirmed -> FieldStatus.CONFIRMED
-                autoApplicable -> FieldStatus.AUTO_APPLIED
-                else -> FieldStatus.NEEDS_CONFIRMATION
-            }
-            if (userConfirmed) {
-                deps += Dep(DepKind.CONFIRMATION, "session.${Ids.segment(state.sessionId)}")
-            }
-            if (answered) {
-                state.resolutions += Resolution(fieldId, "FIELD_ANSWER", stepId, state.nextSeq())
-            }
-
-            rebuilt[fieldId] = DraftField(
-                fieldId = fieldId,
-                slotId = slotId,
-                value = winner.value,
-                status = status,
-                priced = catalogEntity != null,
-                deps = deps.distinct(),
-                provenance = provenanceOf(winner, revoked, autoApplicable, unusable),
-                factId = winner.factId,
-                updatedSeq = winner.seq,
-                userConfirmed = userConfirmed,
+            // A slot a declared line distributes is resolved per line below, so the
+            // base preference itself does not become an order-level field.
+            if (slotId in lineSlotIds || slotId in lineBaseSlotIds) return@forEach
+            // A scoped preference only ever fills the lines its scope matches; it
+            // never becomes an order-level field of its own.
+            if (winner.baseSlotId != null && winner.baseSlotId != slotId) return@forEach
+            rebuilt[fieldIdFor(slotId)] = buildField(
+                state = state,
+                stepId = stepId,
+                previous = previous,
+                fieldSlotId = slotId,
+                winner = winner,
+                rankingLosers = selection.ranking[slotId].orEmpty(),
             )
+        }
+
+        // Each declared line resolves its own fields: a value addressed directly at
+        // the line wins over an exact restaurant-menu override, which wins over a
+        // menu-type preference, which wins over a global default — inside the same
+        // authority rules every other value follows.
+        state.draftLines.forEach { line ->
+            line.slots.forEach lineSlot@{ binding ->
+                val ranked = state.facts.values
+                    .filter { relevanceOf(state, it) == Relevance.ACTIVE }
+                    .mapNotNull { fact ->
+                        lineSpecificityOf(state, fact, line, binding)?.let { fact to it }
+                    }
+                    .sortedWith(linePrecedence(state))
+                val winner = ranked.firstOrNull()?.first ?: return@lineSlot
+                rebuilt[fieldIdFor(binding.lineSlotId)] = buildField(
+                    state = state,
+                    stepId = stepId,
+                    previous = previous,
+                    fieldSlotId = binding.lineSlotId,
+                    winner = winner,
+                    rankingLosers = ranked.drop(1).map { it.first },
+                )
+            }
         }
 
         // Ranking-only memory with no winning value still has to be visible as a
         // proposal the user can accept, so it opens its own confirmation.
         selection.ranking.toSortedMap().forEach { (slotId, facts) ->
+            if (slotId in lineSlotIds || slotId in lineBaseSlotIds) return@forEach
             val fieldId = fieldIdFor(slotId)
             if (rebuilt.containsKey(fieldId)) return@forEach
             val proposal = facts.minByOrNull { it.factId } ?: return@forEach
+            if (proposal.baseSlotId != null && proposal.baseSlotId != slotId) return@forEach
             rebuilt[fieldId] = DraftField(
                 fieldId = fieldId,
                 slotId = slotId,
@@ -360,6 +339,135 @@ object AsprEngine {
             updatedSeq = priced.maxOf { it.updatedSeq },
         )
     }
+
+    /**
+     * Builds one draft field from the fact that won it. Shared by the base-slot
+     * projection and the per-line projection so both follow exactly the same
+     * permission, revocation, stock and confirmation rules.
+     */
+    private fun buildField(
+        state: ProductionState,
+        stepId: String,
+        previous: Map<String, DraftField>,
+        fieldSlotId: String,
+        winner: Fact,
+        rankingLosers: List<Fact>,
+    ): DraftField {
+        val fieldId = fieldIdFor(fieldSlotId)
+        val prior = previous[fieldId]
+        val catalogEntity = winner.catalogEntityId
+        val revoked = state.asprEnabled &&
+            winner.scopeIds.any { it in state.revokedScopes }
+
+        // The current catalog cannot fulfil this value, so it is never treated
+        // as settled no matter where it came from.
+        val unusable = winner.value in state.unusableValues
+        val autoApplicable = when {
+            winner.confidence != Confidence.EXPLICIT -> false
+            unusable -> false
+            // The final menu, its lines and the total are the user's choice for
+            // each order, never an automatic application.
+            winner.slotId in state.neverAutoApplySlots -> false
+            fieldSlotId in state.neverAutoApplySlots -> false
+            !state.asprEnabled ->
+                // Baseline cannot tell whether stored memory still applies to
+                // this target, so it only reuses what this session stated.
+                winner.boundSessionId == state.sessionId
+            revoked -> false
+            else -> winner.permission == Permission.AUTO_APPLY
+        }
+
+        val deps = mutableListOf(Dep(DepKind.HARD_VALUE, winner.factId))
+        if (state.asprEnabled) {
+            winner.scopeIds.sorted().forEach { deps += Dep(DepKind.PERMISSION, it) }
+            if (catalogEntity != null) {
+                deps += Dep(
+                    DepKind.CATALOG,
+                    catalogDepRef(catalogEntity, fieldSlotId, winner.authorityVersion),
+                )
+            }
+            rankingLosers.sortedBy { it.factId }.forEach {
+                deps += Dep(DepKind.RANKING, it.factId)
+            }
+        }
+
+        // A new fact event for a slot the agent had asked about is the user's
+        // answer to that question.
+        val answered = prior != null &&
+            (prior.status == FieldStatus.NEEDS_CONFIRMATION || prior.status == FieldStatus.INVALIDATED) &&
+            winner.seq > prior.updatedSeq
+        // A slot's value always comes from the fact that currently wins it: a
+        // more current instruction, a correction or a catalog change is why the
+        // user asked for the draft in the first place. What survives is the fact
+        // that the user resolved this slot, which is what a revocation or the
+        // deletion of some other fact must not undo.
+        val userConfirmed = (prior?.userConfirmed == true || answered) && !unusable
+        val status = when {
+            unusable -> FieldStatus.NEEDS_CONFIRMATION
+            userConfirmed -> FieldStatus.CONFIRMED
+            autoApplicable -> FieldStatus.AUTO_APPLIED
+            else -> FieldStatus.NEEDS_CONFIRMATION
+        }
+        if (userConfirmed) {
+            deps += Dep(DepKind.CONFIRMATION, "session.${Ids.segment(state.sessionId)}")
+        }
+        if (answered) {
+            state.resolutions += Resolution(fieldId, "FIELD_ANSWER", stepId, state.nextSeq())
+        }
+
+        return DraftField(
+            fieldId = fieldId,
+            slotId = fieldSlotId,
+            value = winner.value,
+            status = status,
+            priced = catalogEntity != null,
+            deps = deps.distinct(),
+            provenance = provenanceOf(winner, revoked, autoApplicable, unusable),
+            factId = winner.factId,
+            updatedSeq = winner.seq,
+            userConfirmed = userConfirmed,
+        )
+    }
+
+    /**
+     * How narrowly a fact applies to one slot of one declared line, or null when
+     * it does not apply there at all.
+     *
+     * A value addressed directly at the line always applies and outranks every
+     * scoped preference. A scoped preference applies only when its structural
+     * scope matches the line: the exact menu for an override, the authored menu
+     * type for a type preference, no qualifier for a global default. The baseline
+     * arm has no scope typing, so any value of the base slot matches and the
+     * latest wins.
+     */
+    private fun lineSpecificityOf(
+        state: ProductionState,
+        fact: Fact,
+        line: DraftLineDecl,
+        binding: LineSlotBinding,
+    ): Int? {
+        if (fact.slotId == binding.lineSlotId) return LINE_DIRECT_SPECIFICITY
+        val base = binding.baseSlotId ?: return null
+        if ((fact.baseSlotId ?: fact.slotId) != base) return null
+        if (!state.asprEnabled) return 0
+        return when {
+            fact.scopeMenuId != null -> if (fact.scopeMenuId == line.menuValueToken) 2 else null
+            fact.menuTypeId != null -> if (fact.menuTypeId == line.menuTypeToken) 1 else null
+            else -> 0
+        }
+    }
+
+    private fun linePrecedence(state: ProductionState): Comparator<Pair<Fact, Int>> =
+        if (state.asprEnabled) {
+            compareByDescending<Pair<Fact, Int>> { it.first.kind.precedence }
+                .thenByDescending { it.second }
+                .thenByDescending { it.first.authorityVersion }
+                .thenByDescending { it.first.seq }
+        } else {
+            compareByDescending { it.first.seq }
+        }
+
+    private const val LINE_DIRECT_SPECIFICITY = 3
 
     private fun provenanceOf(
         fact: Fact,

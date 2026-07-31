@@ -3,11 +3,16 @@ package com.scpc.deliveryagent.delivery
 import com.scpc.deliveryagent.core.AsprEngine
 import com.scpc.deliveryagent.core.DepKind
 import com.scpc.deliveryagent.core.DraftField
+import com.scpc.deliveryagent.core.DraftLineDecl
+import com.scpc.deliveryagent.core.FactKind
 import com.scpc.deliveryagent.core.FieldStatus
+import com.scpc.deliveryagent.core.LineSlotBinding
 import com.scpc.deliveryagent.core.ProbeStep
 import com.scpc.deliveryagent.core.ProductionCore
 import com.scpc.deliveryagent.core.ProductionState
+import com.scpc.deliveryagent.core.Relevance
 import com.scpc.deliveryagent.core.Role
+import com.scpc.deliveryagent.core.RoleExt
 import com.scpc.deliveryagent.core.StepOutcome
 import com.scpc.deliveryagent.core.Ids
 import org.json.JSONObject
@@ -37,7 +42,12 @@ fun DraftField.provenanceLabel(state: ProductionState): String {
         provenance == "INFERRED_RANKING_ONLY" -> "추론 — 자동 적용하지 않음"
         provenance == "PRICED_LINE_ROLLUP" -> "현재 메뉴정보로 재계산"
         provenance == "REQUIRED_OPTION_UNRESOLVED" -> "확인 필요"
-        else -> provenance
+        provenance == "CATALOG_CANNOT_FULFIL_ASK_AGAIN" -> "지금 이 식당에서 고를 수 없음 — 다시 확인"
+        provenance == "AUTO_APPLY_REVOKED_ASK_AGAIN" -> "자동 적용 권한 철회 — 다시 확인"
+        // Every provenance the engine produces has a sentence above. Reaching
+        // here would put an internal constant on the screen, so it says nothing
+        // rather than something meaningless.
+        else -> "확인 필요"
     }
 }
 
@@ -46,6 +56,139 @@ fun FieldStatus.userLabel(): String = when (this) {
     FieldStatus.NEEDS_CONFIRMATION -> "확인 필요"
     FieldStatus.CONFIRMED -> "확인 완료"
     FieldStatus.INVALIDATED -> "변경됨 — 다시 확인"
+}
+
+/**
+ * Status and origin of one row, without saying the same thing twice.
+ *
+ * A confirmed field's provenance is that the user confirmed it, so repeating it
+ * reads as a stutter on screen.
+ */
+fun DraftField.statusLine(state: ProductionState): String {
+    val status = status.userLabel()
+    val origin = provenanceLabel(state)
+    return if (origin == status) status else "$status · $origin"
+}
+
+/**
+ * What a draft row shows as its value.
+ *
+ * The order total is a roll-up whose stored value is a digest of the priced
+ * lines — useful to the engine, meaningless to a person — so the row shows the
+ * amount instead.
+ */
+fun DraftField.displayValue(
+    catalog: SyntheticCatalog,
+    pricing: DraftPricing,
+    state: ProductionState,
+): String = when {
+    slotId != AsprEngine.SLOT_TOTAL -> catalog.valueLabel(value)
+    value == null -> "다시 계산 필요"
+    else -> pricing.formatAmount(pricing.total(state))
+}
+
+/**
+ * Korean particles, chosen by whether the preceding syllable ends in a consonant.
+ *
+ * Sentences are assembled from catalog labels, so the particle cannot be written
+ * into the template: "맵기를"과 "밥 양을" both come from the same line of code.
+ */
+object Particles {
+
+    /** 을 / 를 */
+    fun obj(word: String): String = if (endsWithConsonant(word)) "을" else "를"
+
+    /** 이 / 가 */
+    fun subject(word: String): String = if (endsWithConsonant(word)) "이" else "가"
+
+    /** 으로 / 로 — ㄹ takes the short form, like a vowel ending. */
+    fun into(word: String): String = when (finalConsonant(word)) {
+        null, RIEUL -> "로"
+        else -> "으로"
+    }
+
+    fun withObj(word: String): String = word + obj(word)
+
+    fun withInto(word: String): String = word + into(word)
+
+    private const val RIEUL = 8
+
+    private fun endsWithConsonant(word: String): Boolean = finalConsonant(word) != null
+
+    /**
+     * Index of the trailing consonant of the last Hangul syllable, or null when
+     * there is none. A label ending in something else — a digit or a latin
+     * letter — is treated as vowel-final, which is what reads naturally for the
+     * amounts and counts this app shows.
+     */
+    private fun finalConsonant(word: String): Int? {
+        val last = word.trimEnd().lastOrNull() ?: return null
+        if (last !in HANGUL_FIRST..HANGUL_LAST) return null
+        val index = (last - HANGUL_FIRST) % 28
+        return if (index == 0) null else index
+    }
+
+    private const val HANGUL_FIRST = '가'
+    private const val HANGUL_LAST = '힣'
+}
+
+/**
+ * Token scheme for line-scoped slots.
+ *
+ * The delivery layer mints these tokens and is the only layer that reads them
+ * back. The core treats them as opaque slot identity like every other token, so
+ * nothing below this layer branches on their spelling.
+ */
+object LineTokens {
+    fun menu(lineId: String): String = "line.$lineId.${Slots.MAIN}"
+    fun quantity(lineId: String): String = "line.$lineId.${Slots.QUANTITY}"
+    fun option(lineId: String, baseScopeToken: String): String = "line.$lineId.$baseScopeToken"
+
+    fun menuSlotId(lineId: String): String = Ids.state("slot", menu(lineId))
+    fun quantitySlotId(lineId: String): String = Ids.state("slot", quantity(lineId))
+    fun optionSlotId(lineId: String, baseScopeToken: String): String =
+        Ids.state("slot", option(lineId, baseScopeToken))
+
+    fun menuFieldId(lineId: String): String = AsprEngine.fieldIdFor(menuSlotId(lineId))
+    fun optionFieldId(lineId: String, baseScopeToken: String): String =
+        AsprEngine.fieldIdFor(optionSlotId(lineId, baseScopeToken))
+
+    data class Parsed(val lineId: String, val baseScopeToken: String)
+
+    /** Reads a line-scoped slot id back, or null when it is not line-scoped. */
+    fun parseSlotId(slotId: String): Parsed? {
+        val token = slotId.removePrefix("slot.")
+        if (!token.startsWith("line.")) return null
+        val rest = token.removePrefix("line.")
+        val lineId = rest.substringBefore('.')
+        val base = rest.substringAfter('.', "")
+        if (lineId.isEmpty() || base.isEmpty()) return null
+        return Parsed(lineId, base)
+    }
+}
+
+/** The three reuse scopes an explicit stable preference can be saved at. */
+enum class PreferenceScopeLevel { GLOBAL_DEFAULT, MENU_TYPE, RESTAURANT_MENU_OVERRIDE }
+
+/**
+ * Token scheme for the three preference scopes.
+ *
+ * Each scope level of one option slot gets its own token, so it keeps its own
+ * fact, tombstone and auto-apply permission; saving or withdrawing one level
+ * never touches another. The delivery layer mints and reads these tokens; the
+ * core only matches the structural scope fields stored alongside them.
+ */
+object PreferenceScopes {
+    /** "모든 메뉴" — the base slot token itself, as stored since the first release. */
+    fun global(baseScopeToken: String): String = baseScopeToken
+
+    /** "어느 식당이든 이 메뉴 유형" — bound to a catalog-authored type token. */
+    fun menuType(baseScopeToken: String, menuTypeToken: String): String =
+        "$baseScopeToken.type.$menuTypeToken"
+
+    /** "이 식당의 이 메뉴만" — bound to one exact restaurant and menu. */
+    fun menuOverride(baseScopeToken: String, restaurantToken: String, menuToken: String): String =
+        "$baseScopeToken.at.$restaurantToken.$menuToken"
 }
 
 /**
@@ -95,19 +238,60 @@ class ProductSurface(
                 questions += "${restaurant.name}에서 '${value.matchedText}'를 고를 수 없습니다. 다른 것으로 할까요?"
                 return@forEach
             }
-            when (slot.kind) {
-                SlotKind.USER_REQUEST -> addRequestNote(restaurant, value.valueToken)
-                else ->
-                    if (slot.priced) {
-                        chooseLine(restaurant, slot, value.valueToken)
-                    } else {
-                        remember(
-                            restaurant = restaurant,
-                            slot = slot,
-                            value = value.valueToken,
-                            stable = value.scope == ValueScope.REMEMBER_FOR_REUSE,
-                        )
+            when {
+                slot.kind == SlotKind.USER_REQUEST -> addRequestNote(restaurant, value.valueToken)
+
+                // A menu is an order line the user is adding, never a preference.
+                value.scopeToken == Slots.MAIN -> addLine(restaurant, value.valueToken)
+
+                // A quantity belongs to one line. With several lines the target is
+                // ambiguous, and an ambiguous instruction is asked about, not spread.
+                value.scopeToken == Slots.QUANTITY -> {
+                    val only = state().draftLines.singleOrNull()
+                    if (only == null) {
+                        questions += "수량을 바꿀 메뉴를 먼저 정해 주세요."
+                        return@forEach
                     }
+                    setQuantity(restaurant, only.lineId, value.valueToken)
+                }
+
+                else -> {
+                    // An option named without a target applies to the lines that
+                    // carry it. When more than one line does, the target is asked.
+                    val drafted = state().draftLines
+                    val bound = drafted.count { decl ->
+                        decl.slots.any { it.baseSlotId == slot.slotId }
+                    }
+                    if (bound > 1) {
+                        questions += "${Particles.withObj(slot.label)} 바꿀 메뉴를 정해 주세요. " +
+                            "지금은 여러 항목에 해당합니다."
+                        return@forEach
+                    }
+                    // With dishes already chosen and none of them offering this
+                    // option, the instruction has nothing to land on. Filing it
+                    // against the order instead would lose it — and, for a paid
+                    // extra, lose its price too — so the app says so.
+                    val orderLevel = slot.scopeToken in restaurant.orderLevelSlots
+                    if (drafted.isNotEmpty() && bound == 0 && !orderLevel &&
+                        slot.kind == SlotKind.MENU_OPTION
+                    ) {
+                        questions += "지금 주문한 메뉴에는 ${slot.label} 선택이 없습니다. " +
+                            "${slot.label} 선택이 있는 메뉴를 담을까요?"
+                        return@forEach
+                    }
+                    remember(
+                        restaurant = restaurant,
+                        slot = slot,
+                        value = value.valueToken,
+                        // A budget, a wanted time or a kind of food is what the user
+                        // wants *this* time. Keeping one as a standing preference
+                        // would silently apply an old budget to a later order, so a
+                        // stated condition never becomes stable however the sentence
+                        // was scoped.
+                        stable = value.scope == ValueScope.REMEMBER_FOR_REUSE &&
+                            slot.kind != SlotKind.USER_CONDITION,
+                    )
+                }
             }
             applied += value
         }
@@ -152,7 +336,7 @@ class ProductSurface(
             roles = roles(Role.PRIMARY_GOAL to GOAL_VALID_DRAFT),
             newSession = true,
         )
-        declareSchema(restaurant)
+        declareStructure(restaurant, emptyList())
         return outcome
     }
 
@@ -165,26 +349,214 @@ class ProductSurface(
             ),
             newSession = true,
         )
-        declareSchema(restaurant)
+        declareStructure(restaurant, emptyList())
+        return outcome
+    }
+
+    /** Order lines of the current draft, oldest first. */
+    fun lines(): List<DraftLineDecl> = state().draftLines.toList()
+
+    /**
+     * Declares the order lines of the current draft and the option schema they
+     * need.
+     *
+     * Everything here is catalog data about the draft the user built: which lines
+     * exist, which slots each line carries, which of them need a value, which the
+     * user must choose for every order, and which values the catalog currently
+     * cannot fulfil.
+     */
+    private fun declareStructure(restaurant: RestaurantDefinition, lines: List<DraftLineDecl>) {
+        val required = mutableListOf<String>()
+        val neverAuto = mutableListOf<String>()
+        lines.forEach { line ->
+            required += LineTokens.menuSlotId(line.lineId)
+            // A priced line and its quantity are the order itself, so they are
+            // never filled automatically.
+            neverAuto += LineTokens.menuSlotId(line.lineId)
+            neverAuto += LineTokens.quantitySlotId(line.lineId)
+            lineOptionSlots(restaurant, line.menuValueToken).forEach { slot ->
+                if (slot.required) {
+                    required += LineTokens.optionSlotId(line.lineId, slot.scopeToken)
+                }
+            }
+        }
+        restaurant.orderLevelSlots.map(catalog::slot).filter { it.required }.forEach { slot ->
+            required += slot.slotId
+        }
+        core.declareDraftStructure(
+            lines = lines,
+            requiredSlotIds = required,
+            neverAutoApplySlotIds = neverAuto,
+            // Out of stock everywhere, plus anything this kitchen simply does not
+            // do. A preference for a heat level this restaurant does not offer is
+            // not quietly rounded to the nearest one; that field is asked again.
+            unusableValues = catalog.unusableValueTokens() +
+                catalog.valuesNotOfferedBy(restaurant),
+        )
+    }
+
+    /** Option slots that attach to a line of this menu at this restaurant. */
+    private fun lineOptionSlots(
+        restaurant: RestaurantDefinition,
+        menuToken: String?,
+    ): List<SlotDefinition> {
+        val menu = catalog.value(menuToken ?: return emptyList()) ?: return emptyList()
+        return menu.lineOptionSlots.filter { it in restaurant.slotTokens }.map(catalog::slot)
+    }
+
+    private fun lineDecl(
+        restaurant: RestaurantDefinition,
+        lineId: String,
+        menuToken: String,
+    ): DraftLineDecl {
+        val menu = catalog.value(menuToken) ?: error("unknown menu $menuToken")
+        val bindings = mutableListOf(
+            LineSlotBinding(LineTokens.menuSlotId(lineId), null),
+            LineSlotBinding(LineTokens.quantitySlotId(lineId), null),
+        )
+        lineOptionSlots(restaurant, menuToken).forEach { slot ->
+            bindings += LineSlotBinding(
+                LineTokens.optionSlotId(lineId, slot.scopeToken),
+                slot.slotId,
+            )
+        }
+        return DraftLineDecl(
+            lineId = lineId,
+            menuValueToken = menuToken,
+            menuTypeToken = menu.menuType,
+            slots = bindings,
+        )
+    }
+
+    /** Line ids count up and are never reused inside one draft, even after removal. */
+    private fun nextLineId(state: ProductionState): String {
+        val fromRegistry = state.lineSlotRegistry.mapNotNull { LineTokens.parseSlotId(it)?.lineId }
+        val used = (state.draftLines.map { it.lineId } + fromRegistry)
+            .mapNotNull { it.removePrefix("l").toIntOrNull() }
+            .maxOrNull() ?: 0
+        return "l${used + 1}"
+    }
+
+    /**
+     * Adds one order line for a menu of this restaurant.
+     *
+     * A priced line is never filled automatically, so this is the user choosing,
+     * and the choice is recorded as theirs.
+     */
+    fun addLine(restaurant: RestaurantDefinition, menuToken: String): StepOutcome {
+        requireOffered(restaurant, catalog.slot(Slots.MAIN), menuToken)
+        val state = state()
+        val lineId = nextLineId(state)
+        declareStructure(restaurant, state.draftLines + lineDecl(restaurant, lineId, menuToken))
+        return recordMenuChoice(restaurant, lineId, menuToken)
+    }
+
+    /** Replaces the menu of one existing line. The other lines are untouched. */
+    fun chooseLineMenu(
+        restaurant: RestaurantDefinition,
+        lineId: String,
+        menuToken: String,
+    ): StepOutcome {
+        requireOffered(restaurant, catalog.slot(Slots.MAIN), menuToken)
+        val current = state().draftLines
+        require(current.any { it.lineId == lineId }) { "no order line $lineId" }
+        declareStructure(
+            restaurant,
+            current.map { if (it.lineId == lineId) lineDecl(restaurant, lineId, menuToken) else it },
+        )
+        return recordMenuChoice(restaurant, lineId, menuToken)
+    }
+
+    private fun recordMenuChoice(
+        restaurant: RestaurantDefinition,
+        lineId: String,
+        menuToken: String,
+    ): StepOutcome {
+        val outcome = step(
+            operation = ProductionCore.Op.UPSERT_FACT,
+            roles = roles(
+                Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
+                Role.TARGET_ENTITY to restaurant.entityToken,
+                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+                Role.PRESERVED_SCOPE to LineTokens.menu(lineId),
+                Role.ONE_OFF_VALUE to menuToken,
+            ),
+        )
+        core.confirmUserChoice(listOf(LineTokens.menuSlotId(lineId)))
         return outcome
     }
 
     /**
-     * Tells the engine what this restaurant's menu needs.
+     * Removes one order line.
      *
-     * All three inputs are catalog data: which slots need a value, which of them
-     * the user must choose for every order, and which values the catalog currently
-     * cannot fulfil.
+     * The line's own values are deleted with tombstones, so a replay or restart
+     * cannot bring them back, and the other lines and the stored preferences are
+     * untouched.
      */
-    private fun declareSchema(restaurant: RestaurantDefinition) {
-        core.declareOptionSchema(
-            slotIds = catalog.slotsOf(restaurant).filter { it.required }.map { it.slotId },
-            // A priced line is the order itself, so it is never auto-applied.
-            neverAutoApplySlotIds = catalog.slotsOf(restaurant)
-                .filter { it.priced }
-                .map { it.slotId },
-            unusableValues = catalog.unusableValueTokens(),
+    fun removeLine(restaurant: RestaurantDefinition, lineId: String): StepOutcome? {
+        val state = state()
+        val line = state.draftLines.firstOrNull { it.lineId == lineId } ?: return null
+        var last: StepOutcome? = null
+        line.slots.forEach { binding ->
+            if (state.facts.values.any { it.slotId == binding.lineSlotId }) {
+                last = step(
+                    operation = ProductionCore.Op.DELETE_FACT,
+                    roles = roles(
+                        Role.PRESERVED_SCOPE to binding.lineSlotId.removePrefix("slot."),
+                    ),
+                )
+            }
+        }
+        declareStructure(restaurant, state().draftLines.filter { it.lineId != lineId })
+        return last
+    }
+
+    /** Sets one option of one line for this order only. Stored memory is untouched. */
+    fun setLineOption(
+        restaurant: RestaurantDefinition,
+        lineId: String,
+        slot: SlotDefinition,
+        value: String,
+    ): StepOutcome {
+        requireOffered(restaurant, slot, value)
+        val line = state().draftLines.firstOrNull { it.lineId == lineId }
+        require(line != null) { "no order line $lineId" }
+        // Addressing a line with an option that line does not carry — an
+        // order-level slot such as the utensil, say — would put a second, orphan
+        // row for it on the draft. The slot belongs to one address or the other.
+        require(line.slots.any { it.baseSlotId == slot.slotId }) {
+            "order line $lineId does not carry ${slot.label}"
+        }
+        return step(
+            operation = ProductionCore.Op.UPSERT_FACT,
+            roles = roles(
+                Role.TARGET_ENTITY to restaurant.entityToken,
+                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+                Role.PRESERVED_SCOPE to LineTokens.option(lineId, slot.scopeToken),
+                Role.ONE_OFF_VALUE to value,
+            ),
         )
+    }
+
+    /** Sets how many of one line's menu to order. */
+    fun setQuantity(
+        restaurant: RestaurantDefinition,
+        lineId: String,
+        quantityToken: String,
+    ): StepOutcome {
+        requireOffered(restaurant, catalog.slot(Slots.QUANTITY), quantityToken)
+        require(state().draftLines.any { it.lineId == lineId }) { "no order line $lineId" }
+        val outcome = step(
+            operation = ProductionCore.Op.UPSERT_FACT,
+            roles = roles(
+                Role.TARGET_ENTITY to restaurant.entityToken,
+                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+                Role.PRESERVED_SCOPE to LineTokens.quantity(lineId),
+                Role.ONE_OFF_VALUE to quantityToken,
+            ),
+        )
+        core.confirmUserChoice(listOf(LineTokens.quantitySlotId(lineId)))
+        return outcome
     }
 
     /** Stores a value for one option slot with an explicit reuse scope. */
@@ -217,19 +589,136 @@ class ProductSurface(
     }
 
     /**
-     * Picks a line of this restaurant's menu for the current order.
+     * Stores a stable preference for one authored menu type: "이 메뉴 유형이면
+     * 어느 식당이든".
      *
-     * A priced line is never filled automatically, so this is the user choosing, and
-     * the choice is recorded as theirs.
+     * Only a slot the catalog author declared stable for that type may cross
+     * restaurants this way; anything else must be saved per menu or globally. The
+     * value still only applies where the current restaurant offers the slot, and
+     * the token scheme keeps each scope level its own fact, tombstone and
+     * permission.
      */
-    fun chooseLine(
+    fun rememberForMenuType(
         restaurant: RestaurantDefinition,
         slot: SlotDefinition,
         value: String,
+        menuTypeToken: String,
     ): StepOutcome {
-        val outcome = remember(restaurant, slot, value, stable = false)
-        core.confirmUserChoice(listOf(slot.slotId))
-        return outcome
+        requireOffered(restaurant, slot, value)
+        val menuType = catalog.menuType(menuTypeToken)
+        require(slot.scopeToken in menuType.stableOptionSlots) {
+            "${menuType.label} 유형은 ${slot.label}을 식당을 넘어 재사용하도록 authored되지 않았다"
+        }
+        return step(
+            operation = ProductionCore.Op.UPSERT_FACT,
+            roles = roles(
+                Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
+                Role.TARGET_ENTITY to restaurant.entityToken,
+                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+                Role.PRESERVED_SCOPE to PreferenceScopes.menuType(slot.scopeToken, menuTypeToken),
+                RoleExt.BASE_SCOPE to slot.scopeToken,
+                RoleExt.SPECIFICITY to "1",
+                RoleExt.MENU_TYPE_ID to menuTypeToken,
+                Role.STABLE_VALUE to value,
+            ),
+        )
+    }
+
+    /**
+     * Stores a stable exception for one exact menu of one restaurant: "이 식당의
+     * 이 메뉴만".
+     *
+     * It overrides the menu-type and global values on that menu's lines and
+     * nowhere else. Deleting or revoking it leaves the wider scopes untouched.
+     */
+    fun rememberForMenu(
+        restaurant: RestaurantDefinition,
+        slot: SlotDefinition,
+        value: String,
+        menuToken: String,
+    ): StepOutcome {
+        requireOffered(restaurant, slot, value)
+        val menu = catalog.value(menuToken)
+        require(menu != null && restaurant.menu.any { it.token == menuToken }) {
+            "${restaurant.name} has no menu $menuToken"
+        }
+        require(slot.scopeToken in menu.lineOptionSlots) {
+            "${menu.label}에는 ${slot.label} 선택이 없다"
+        }
+        return step(
+            operation = ProductionCore.Op.UPSERT_FACT,
+            roles = roles(
+                Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
+                Role.TARGET_ENTITY to restaurant.entityToken,
+                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+                Role.PRESERVED_SCOPE to
+                    PreferenceScopes.menuOverride(slot.scopeToken, restaurant.entityToken, menuToken),
+                RoleExt.BASE_SCOPE to slot.scopeToken,
+                RoleExt.SPECIFICITY to "2",
+                RoleExt.SCOPE_MENU_ID to menuToken,
+                Role.STABLE_VALUE to value,
+            ),
+        )
+    }
+
+    /** Withdraws auto-apply for one preference scope token, wider or narrower. */
+    fun revokeAutoApplyScope(scopeToken: String): StepOutcome = step(
+        operation = ProductionCore.Op.REVOKE_SCOPE,
+        roles = roles(Role.REVOKED_SCOPE to scopeToken),
+    )
+
+    /** Corrects the stored value behind one preference scope token. */
+    fun correctPreference(scopeToken: String, value: String): StepOutcome = step(
+        operation = ProductionCore.Op.CORRECT_FACT,
+        roles = roles(
+            Role.PRESERVED_SCOPE to scopeToken,
+            Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+            Role.STABLE_VALUE to value,
+        ),
+    )
+
+    /** Deletes the stored value behind one preference scope token, leaving a marker. */
+    fun deletePreference(scopeToken: String): StepOutcome = step(
+        operation = ProductionCore.Op.DELETE_FACT,
+        roles = roles(Role.PRESERVED_SCOPE to scopeToken),
+    )
+
+    /** One stored explicit preference, with the scope it was saved at. */
+    data class StoredPreference(
+        val factId: String,
+        val scopeToken: String,
+        val baseSlot: SlotDefinition?,
+        val level: PreferenceScopeLevel,
+        val menuTypeToken: String?,
+        val menuToken: String?,
+        val value: String,
+        val autoApplyRevoked: Boolean,
+    )
+
+    /** The explicit stable preferences the app currently holds, most recent last. */
+    fun storedPreferences(): List<StoredPreference> {
+        val state = state()
+        return state.facts.values
+            .filter { it.kind == FactKind.STABLE }
+            .sortedBy { it.seq }
+            .map { fact ->
+                val baseSlotId = fact.baseSlotId ?: fact.slotId
+                StoredPreference(
+                    factId = fact.factId,
+                    scopeToken = fact.scopeIds.firstOrNull()
+                        ?.removePrefix("scope.") ?: baseSlotId.removePrefix("slot."),
+                    baseSlot = catalog.slotOfFieldSlotId(baseSlotId),
+                    level = when (fact.specificity) {
+                        2 -> PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE
+                        1 -> PreferenceScopeLevel.MENU_TYPE
+                        else -> PreferenceScopeLevel.GLOBAL_DEFAULT
+                    },
+                    menuTypeToken = fact.menuTypeId,
+                    menuToken = fact.scopeMenuId,
+                    value = fact.value,
+                    autoApplyRevoked = fact.scopeIds.any { it in state.revokedScopes },
+                )
+            }
     }
 
     /** Adds a deletable one-time request note to the current draft. */
@@ -252,7 +741,11 @@ class ProductSurface(
     data class ReviewTurn(
         val reviewId: String,
         val reading: ReviewReading,
-        /** Remarks that could become memory, each still needing a yes or no. */
+        /** The menu this review is about, once settled. */
+        val targetMenuToken: String?,
+        /** True when several menus were ordered and the user must name one first. */
+        val needsTarget: Boolean,
+        /** Remarks that could become memory, each still needing a scope and a yes. */
         val offers: List<ReviewCandidate>,
         val notes: List<String>,
     )
@@ -263,51 +756,154 @@ class ProductSurface(
      * The review is stored, and what it said about an option is offered back as a
      * question. Nothing becomes memory here: a remark about one order is not
      * permission to change later ones, and over-generalising it is exactly the
-     * failure this product exists to avoid.
+     * failure this product exists to avoid. With several ordered menus the review
+     * stays unattributed — no rating evidence, no offers — until the user names
+     * the menu it was about.
      */
     fun submitReview(
         restaurant: RestaurantDefinition,
         ratingToken: String?,
         text: String,
+        targetMenuToken: String? = null,
     ): ReviewTurn {
+        if (targetMenuToken != null) {
+            require(restaurant.menu.any { it.token == targetMenuToken }) {
+                "${restaurant.name} has no menu $targetMenuToken"
+            }
+        }
         val reading = intake.readReview(text, ratingToken)
         val current = state()
+        val target = targetMenuToken ?: current.draftLines.singleOrNull()?.menuValueToken
+        val needsTarget = target == null && current.draftLines.size > 1
         val reviewId = core.recordReview(
             ratingToken = reading.ratingToken,
             entityId = restaurant.entityToken,
-            // The line the reviewed order contained. A rating is about that line at
-            // that restaurant and nowhere else.
-            lineValueToken = current.fields[catalog.slot(Slots.MAIN).fieldId]?.value,
+            lineValueToken = target,
             // The order this review is about, so the record is traceable to it.
             actionId = current.actions.values.maxByOrNull { it.seq }?.actionId,
             text = text,
         )
+        clearEvaluationRequest()
 
         val notes = mutableListOf<String>()
         reading.observations.forEach { notes += "'$it' 로 이해했습니다." }
         if (reading.unrecognised.isNotEmpty()) {
             notes += "'" + reading.unrecognised.joinToString(" ") + "' 부분은 이해하지 못했습니다."
         }
-        val offers = reading.candidates.filter { candidate ->
+        if (needsTarget) {
+            notes += "여러 메뉴를 주문했습니다. 어느 메뉴에 대한 평가인지 먼저 정해 주세요."
+        }
+        val offers = if (needsTarget) emptyList() else offersOf(reading)
+        if (offers.isEmpty() && reading.candidates.isNotEmpty() && !needsTarget) {
+            notes += "다음 주문에 반영할 항목을 찾지 못했습니다."
+        }
+        return ReviewTurn(reviewId, reading, target, needsTarget, offers, notes)
+    }
+
+    private fun offersOf(reading: ReviewReading): List<ReviewCandidate> =
+        reading.candidates.filter { candidate ->
             // Only offer to remember something this app can actually act on later.
             catalog.slots.any { it.scopeToken == candidate.slotToken }
         }
-        if (offers.isEmpty() && reading.candidates.isNotEmpty()) {
-            notes += "다음 주문에 반영할 항목을 찾지 못했습니다."
+
+    /** Settles which menu an ambiguous review was about and returns its offers. */
+    fun setReviewTarget(
+        restaurant: RestaurantDefinition,
+        reviewId: String,
+        menuToken: String,
+    ): List<ReviewCandidate> {
+        require(restaurant.menu.any { it.token == menuToken }) {
+            "${restaurant.name} has no menu $menuToken"
         }
-        return ReviewTurn(reviewId, reading, offers, notes)
+        core.setReviewTarget(reviewId, menuToken)
+        val review = state().reviews.firstOrNull { it.reviewId == reviewId }
+            ?: return emptyList()
+        return offersOf(intake.readReview(review.text, review.ratingToken))
+    }
+
+    /** Scope levels one review remark can honestly be saved at for its menu. */
+    fun reviewScopeChoices(
+        restaurant: RestaurantDefinition,
+        candidate: ReviewCandidate,
+        menuToken: String?,
+    ): List<PreferenceScopeLevel> {
+        val slot = catalog.slot(candidate.slotToken)
+        val levels = mutableListOf<PreferenceScopeLevel>()
+        val menu = menuToken?.let(catalog::value)
+        if (menu != null && restaurant.menu.any { it.token == menuToken } &&
+            slot.scopeToken in menu.lineOptionSlots
+        ) {
+            levels += PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE
+            val type = menu.menuType?.let(catalog::menuType)
+            if (type != null && slot.scopeToken in type.stableOptionSlots) {
+                levels += PreferenceScopeLevel.MENU_TYPE
+            }
+        }
+        levels += PreferenceScopeLevel.GLOBAL_DEFAULT
+        return levels
     }
 
     /**
-     * Accepts one thing a review said, as a result that arrives later.
+     * Accepts one thing a review said, at the scope the user chose.
      *
-     * It is stored as a delayed outcome, so it changes the ranking and the proposed
-     * option in later orders but is never applied without asking.
+     * Only now does it become an explicit stable preference with auto-apply
+     * permission at exactly that scope. The review keeps the id of the fact it
+     * created, so deleting the review takes back precisely that and nothing the
+     * user stated independently.
      */
-    fun rememberFromReview(reviewId: String, candidate: ReviewCandidate): StepOutcome {
-        val outcome = scheduleOutcome(catalog.slot(candidate.slotToken), candidate.impliesValue)
-        core.linkReviewMemory(reviewId, candidate.impliesValue)
+    fun acceptFromReview(
+        restaurant: RestaurantDefinition,
+        reviewId: String,
+        candidate: ReviewCandidate,
+        level: PreferenceScopeLevel,
+    ): StepOutcome {
+        val review = state().reviews.firstOrNull { it.reviewId == reviewId }
+            ?: error("unknown review $reviewId")
+        val slot = catalog.slot(candidate.slotToken)
+        val menuToken = review.lineValueToken
+        val outcome = when (level) {
+            PreferenceScopeLevel.GLOBAL_DEFAULT ->
+                remember(restaurant, slot, candidate.impliesValue, stable = true)
+
+            PreferenceScopeLevel.MENU_TYPE -> {
+                requireNotNull(menuToken) { "review target menu is not settled" }
+                val type = catalog.value(menuToken)?.menuType
+                    ?: error("menu $menuToken has no authored type")
+                rememberForMenuType(restaurant, slot, candidate.impliesValue, type)
+            }
+
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE -> {
+                requireNotNull(menuToken) { "review target menu is not settled" }
+                rememberForMenu(restaurant, slot, candidate.impliesValue, menuToken)
+            }
+        }
+        core.linkReviewMemory(
+            reviewId = reviewId,
+            valueToken = candidate.impliesValue,
+            factId = scopedStableFactId(restaurant, slot, level, menuToken),
+        )
         return outcome
+    }
+
+    private fun scopedStableFactId(
+        restaurant: RestaurantDefinition,
+        slot: SlotDefinition,
+        level: PreferenceScopeLevel,
+        menuToken: String?,
+    ): String {
+        val scopeToken = when (level) {
+            PreferenceScopeLevel.GLOBAL_DEFAULT -> PreferenceScopes.global(slot.scopeToken)
+            PreferenceScopeLevel.MENU_TYPE -> PreferenceScopes.menuType(
+                slot.scopeToken,
+                catalog.value(menuToken!!)!!.menuType!!,
+            )
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE -> PreferenceScopes.menuOverride(
+                slot.scopeToken,
+                restaurant.entityToken,
+                menuToken!!,
+            )
+        }
+        return AsprEngine.factIdFor(FactKind.STABLE, Ids.state("slot", scopeToken))
     }
 
     /** Declines one thing a review said. The review stays; no memory is created. */
@@ -356,11 +952,19 @@ class ProductSurface(
      */
     fun applyCatalogEvent(eventToken: String): StepOutcome {
         val change = catalog.event(eventToken)
+        // A change to a menu hits the order line that holds it, so only that
+        // line and the total re-open. Anything else keeps the change's own scope.
+        val line = state().draftLines.firstOrNull { it.menuValueToken == change.replacesValue }
+        val scopeToken = if (change.scopeToken == Slots.MAIN && line != null) {
+            LineTokens.menu(line.lineId)
+        } else {
+            change.scopeToken
+        }
         return step(
             operation = ProductionCore.Op.UPSERT_FACT,
             roles = roles(
                 Role.TARGET_ENTITY to change.entityToken,
-                Role.PRESERVED_SCOPE to change.scopeToken,
+                Role.PRESERVED_SCOPE to scopeToken,
                 Role.CURRENT_AUTHORITY to nextAuthorityToken(),
                 // A stock or price change is a fact about this order, not a stored
                 // preference, so it enters at the same precedence as the choice the
@@ -391,8 +995,10 @@ class ProductSurface(
                 "${restaurant.name} has no ${slot.label} option"
             }
         }
-        val offered = catalog.valuesFor(restaurant, slot.scopeToken)
-        require(offered.any { it.token == value }) {
+        // An amount or a duration is whatever the user said, so it is checked for
+        // being well formed rather than for being one of the listed presets. Only
+        // an enumerated option has a fixed list to be offered from.
+        require(catalog.accepts(restaurant, slot.scopeToken, value)) {
             "${restaurant.name} does not offer '$value' for ${slot.label}"
         }
     }
@@ -418,13 +1024,63 @@ class ProductSurface(
             else -> null
         }
         core.declareDraftConstraint(satisfied = reason == null, reason = reason.orEmpty())
-        return step(
+        val outcome = step(
             operation = ProductionCore.Op.REQUEST_DECISION,
             roles = roles(
                 Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
                 Role.TARGET_ENTITY to restaurant.entityToken,
             ),
         )
+        if (outcome.result.optString("decision_state") == "ACT") {
+            outcome.result.optJSONObject("action")?.optString("action_id")
+                ?.takeIf { it.isNotEmpty() }
+                ?.let(::scheduleEvaluationRequest)
+        }
+        return outcome
+    }
+
+    /**
+     * Schedules the app-local request to rate this order.
+     *
+     * It arrives once with virtual time, its arrival is recorded exactly once in
+     * the outcome ledger, and it expires shortly on its own so an unanswered
+     * request never stands in a later draft's way. One order schedules one
+     * request, however often the same committed draft is asked about.
+     */
+    private fun scheduleEvaluationRequest(actionId: String) {
+        step(
+            operation = ProductionCore.Op.UPSERT_FACT,
+            roles = roles(
+                Role.PRESERVED_SCOPE to REVIEW_REQUEST_SCOPE,
+                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
+                Role.DELAYED_OUTCOME to "review.request.${Ids.segment(actionId)}",
+                RoleExt.EXPIRES_AT to
+                    virtualTime(state().runStepCount + EVALUATION_REQUEST_TTL_STEPS),
+            ),
+        )
+    }
+
+    /** True when a request to rate the finished order has arrived and stands. */
+    fun pendingEvaluationRequest(): Boolean {
+        val state = state()
+        return state.facts.values.any { fact ->
+            fact.kind == FactKind.OUTCOME &&
+                fact.value.startsWith("review.request.") &&
+                AsprEngine.relevanceOf(state, fact) == Relevance.ACTIVE
+        }
+    }
+
+    /** Answering the request with a review takes the arrived request down. */
+    private fun clearEvaluationRequest() {
+        val hasRequest = state().facts.values.any {
+            it.kind == FactKind.OUTCOME && it.value.startsWith("review.request.")
+        }
+        if (hasRequest) {
+            step(
+                operation = ProductionCore.Op.DELETE_FACT,
+                roles = roles(Role.PRESERVED_SCOPE to REVIEW_REQUEST_SCOPE),
+            )
+        }
     }
 
     fun exportAndEnd(): StepOutcome =
@@ -474,5 +1130,16 @@ class ProductSurface(
 
     companion object {
         const val GOAL_VALID_DRAFT = "goal.valid_order_draft"
+
+        /** Scope token of the app-local request to rate a finished order. */
+        const val REVIEW_REQUEST_SCOPE = "review.request"
+
+        /**
+         * How long a rating request stands, in product steps of the synthetic
+         * clock counted from scheduling: one step to schedule, one to arrive,
+         * about two to stand. Short by design — the request is a passing notice,
+         * not a task, and must never gate the next order.
+         */
+        const val EVALUATION_REQUEST_TTL_STEPS = 4L
     }
 }

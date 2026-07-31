@@ -135,13 +135,72 @@ class MemoryActivity : Activity() {
             }
         }
 
+        content.addView(Ui.section(this, "명시적 취향 — 적용 범위별"))
+        val preferences = surface.storedPreferences()
+        if (preferences.isEmpty()) {
+            content.addView(Ui.body(this, "저장된 명시적 취향이 없습니다."))
+        } else {
+            preferences.forEach { preference ->
+                content.addView(
+                    Ui.row(
+                        this,
+                        preference.baseSlot?.label ?: preference.scopeToken,
+                        catalog.valueLabel(preference.value),
+                        buildString {
+                            append(scopeLevelLabel(preference))
+                            append(" · ")
+                            append(if (preference.autoApplyRevoked) "자동 적용 철회" else "자동 적용 허용")
+                        },
+                    ),
+                )
+                content.addView(
+                    Ui.chipRow(
+                        this,
+                        listOf(
+                            "이 범위 자동 적용 철회" to {
+                                surface.revokeAutoApplyScope(preference.scopeToken)
+                                render()
+                            },
+                            "이 취향 삭제" to {
+                                surface.deletePreference(preference.scopeToken)
+                                render()
+                            },
+                        ),
+                    ),
+                )
+            }
+        }
+
+        content.addView(Ui.section(this, "남긴 평가"))
+        if (state.reviews.isEmpty()) {
+            content.addView(Ui.body(this, "없습니다."))
+        } else {
+            state.reviews.forEach { record ->
+                val rating = catalog.rating(record.ratingToken)?.label ?: "평점 없음"
+                content.addView(
+                    Ui.row(
+                        this,
+                        rating,
+                        record.text.ifEmpty { "(내용 없음)" },
+                        "대상: " + (record.lineValueToken?.let(catalog::valueLabel) ?: "미지정"),
+                    ),
+                )
+                content.addView(
+                    Ui.button(this, "이 평가와 배운 내용 삭제") {
+                        surface.deleteReview(record.reviewId)
+                        render()
+                    },
+                )
+            }
+        }
+
         content.addView(Ui.divider(this))
         content.addView(Ui.section(this, "직접 관리"))
-        listOf(Slots.SPICINESS, Slots.UTENSIL, Slots.RICE, Slots.SALTINESS, Slots.SIDE)
+        listOf(Slots.SPICINESS, Slots.UTENSIL, Slots.RICE, Slots.SALTINESS)
             .map(catalog::slot)
             .forEach { slot ->
             content.addView(
-                Ui.button(this, "${slot.label} 자동 적용 권한 철회") {
+                Ui.button(this, "${slot.label} 자동 적용 권한 철회 (전역)") {
                     surface.revokeAutoApply(slot)
                     render()
                 },
@@ -168,6 +227,16 @@ class MemoryActivity : Activity() {
                 render()
             }
             .show()
+    }
+
+    private fun scopeLevelLabel(
+        preference: com.scpc.deliveryagent.delivery.ProductSurface.StoredPreference,
+    ): String = when (preference.level) {
+        com.scpc.deliveryagent.delivery.PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE ->
+            "이 식당·메뉴만: " + (preference.menuToken?.let(catalog::valueLabel) ?: "")
+        com.scpc.deliveryagent.delivery.PreferenceScopeLevel.MENU_TYPE ->
+            "메뉴 유형: " + (preference.menuTypeToken?.let { catalog.menuType(it).label } ?: "")
+        com.scpc.deliveryagent.delivery.PreferenceScopeLevel.GLOBAL_DEFAULT -> "모든 메뉴"
     }
 
     private fun kindLabel(kind: FactKind): String = when (kind) {

@@ -9,17 +9,19 @@ import com.scpc.deliveryagent.core.ProductionState
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Reviewing an order, and what the app is allowed to learn from it.
  *
- * The property under test is restraint: a remark about one order becomes an offer,
- * the user decides, and an accepted remark only ever proposes later. Nothing a
- * review said is applied on its own, and deleting the review removes what it
- * taught.
+ * The property under test is restraint with named scope: a remark about one
+ * order becomes an offer; the user picks the exact scope it may apply at — this
+ * menu, this menu type anywhere, or everywhere — and only that scope gets a
+ * stable fact and permission. Deleting the review takes back exactly what it
+ * created. A review of a many-menu order stays unattributed until the user
+ * names the menu it was about.
  */
 class ReviewMemoryTest {
 
@@ -36,15 +38,16 @@ class ReviewMemoryTest {
             catalog,
         )
 
-    private fun ProductSurface.field(scopeToken: String) =
-        state().fields[catalog.slot(scopeToken).fieldId]
+    private fun ProductSurface.lineField(lineId: String, base: String) =
+        state().fields[LineTokens.optionFieldId(lineId, base)]
 
-    /** Completes one order so there is something to review. */
+    /** Completes one single-menu order at 다온 so there is something to review. */
     private fun placeOrder(surface: ProductSurface) {
         surface.startNewOrder(daon)
         surface.say(daon, "2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘")
-        surface.chooseLine(daon, catalog.slot(Slots.MAIN), "menu.daon.clear")
+        surface.addLine(daon, "menu.daon.clear")
         surface.say(daon, "앞으로도 수저 빼고 밥은 보통으로")
+        surface.remember(daon, catalog.slot(Slots.SALTINESS), "salt.normal", stable = false)
         surface.requestDecision(daon)
     }
 
@@ -99,20 +102,50 @@ class ReviewMemoryTest {
         assertEquals(1, surface.reviews().size)
         assertEquals("국물은 괜찮았는데 간이 좀 셌어", surface.reviews().single().text)
         assertEquals(1, turn.offers.size)
+        assertFalse("a single-menu order needs no target question", turn.needsTarget)
+        assertEquals("menu.daon.clear", turn.targetMenuToken)
         assertTrue(
             "the review is traceable to the order it was about",
             surface.reviews().single().actionId != null,
         )
-        assertTrue(
-            "nothing was learned yet",
-            surface.reviews().single().derivedValueTokens.isEmpty(),
-        )
+        assertTrue("nothing was learned yet", surface.reviews().single().derivedFactIds.isEmpty())
         assertEquals(
             "no memory appeared from the review alone",
             before.facts.keys,
             surface.state().facts.keys,
         )
-        assertTrue(surface.state().pendingOutcomes.isEmpty())
+        assertTrue(
+            "nothing but the app-local rating request is scheduled",
+            surface.state().pendingOutcomes.all { it.value.startsWith("review.request.") },
+        )
+    }
+
+    @Test
+    fun `the scope choices offered match what the catalog authored`() {
+        val surface = surface()
+        placeOrder(surface)
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+        val saltiness = turn.offers.single()
+
+        assertEquals(
+            listOf(
+                PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+                PreferenceScopeLevel.MENU_TYPE,
+                PreferenceScopeLevel.GLOBAL_DEFAULT,
+            ),
+            surface.reviewScopeChoices(daon, saltiness, turn.targetMenuToken),
+        )
+
+        // Spiciness is not an authored stable slot of the soup type, so the
+        // cross-restaurant choice is not offered for it.
+        val spicy = surface.submitReview(daon, "rating.ok", "너무 매웠어").offers.single()
+        assertEquals(
+            listOf(
+                PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+                PreferenceScopeLevel.GLOBAL_DEFAULT,
+            ),
+            surface.reviewScopeChoices(daon, spicy, "menu.daon.clear"),
+        )
     }
 
     @Test
@@ -124,112 +157,113 @@ class ReviewMemoryTest {
         surface.dismissFromReview(turn.offers.single())
 
         assertEquals(1, surface.reviews().size)
-        assertTrue(surface.reviews().single().derivedValueTokens.isEmpty())
-        assertTrue(surface.state().pendingOutcomes.isEmpty())
-        assertTrue(surface.state().appliedOutcomes.isEmpty())
-    }
-
-    @Test
-    fun `accepting an offer stores it as a result that arrives later`() {
-        val surface = surface()
-        placeOrder(surface)
-        val turn = surface.submitReview(daon, "rating.ok", "국물은 괜찮았는데 간이 좀 셌어")
-
-        surface.rememberFromReview(turn.reviewId, turn.offers.single())
-
-        assertEquals(
-            listOf("salt.light"),
-            surface.reviews().single().derivedValueTokens,
-        )
-        assertEquals(
-            "it is scheduled, not folded in yet",
-            1,
-            surface.state().pendingOutcomes.size,
-        )
-        assertTrue(surface.state().appliedOutcomes.isEmpty())
-    }
-
-    // ------------------------------------------------------- later effect
-
-    @Test
-    fun `what a review taught only proposes in a later order`() {
-        val surface = surface()
-        placeOrder(surface)
-        val turn = surface.submitReview(daon, "rating.ok", "국물은 괜찮았는데 간이 좀 셌어")
-        surface.rememberFromReview(turn.reviewId, turn.offers.single())
-
-        // Next order, at a different restaurant, after time has passed.
-        surface.nextOrderSession(ongi)
-        surface.advanceTime()
-
-        val learned = surface.state().facts.values.single { it.kind == FactKind.OUTCOME }
-        assertEquals("salt.light", learned.value)
-        assertEquals(
-            "a result never gets permission to apply itself",
-            Permission.ASK_BEFORE_APPLY,
-            learned.permission,
-        )
-        assertEquals(
-            "the stored preference from the order is still applied automatically",
-            FieldStatus.AUTO_APPLIED,
-            surface.field(Slots.SPICINESS)?.status,
-        )
-
-        val candidates = Recommender(catalog).candidates(surface.state(), ongi)
+        assertTrue(surface.reviews().single().derivedFactIds.isEmpty())
         assertTrue(
-            "the review shows up as a reason a candidate ranks where it does",
-            candidates.any { candidate ->
-                candidate.reasons.any { it.badge == "지난 평가" }
-            },
+            surface.state().facts.values.none { it.value == "salt.light" },
         )
     }
 
-    @Test
-    fun `a result learned from a review is folded in exactly once`() {
-        val store = InMemoryStateStore()
-        val surface = surface(store)
-        placeOrder(surface)
-        val turn = surface.submitReview(daon, "rating.ok", "간이 셌어")
-        surface.rememberFromReview(turn.reviewId, turn.offers.single())
-
-        surface.nextOrderSession(ongi)
-        surface.advanceTime()
-        assertEquals(1, surface.state().appliedOutcomes.size)
-
-        // Same store, next process, and time moves again.
-        val relaunched = surface(store, process = "review-2")
-        relaunched.advanceTime()
-        assertEquals(
-            "a restart does not apply the same result a second time",
-            1,
-            relaunched.state().appliedOutcomes.size,
-        )
-    }
+    // ------------------------------------------------------------ accepting
 
     @Test
-    fun `deleting a review removes what it taught and leaves only a marker`() {
+    fun `accepting for this menu only creates a scoped override, not a general rule`() {
         val surface = surface()
         placeOrder(surface)
         val turn = surface.submitReview(daon, "rating.ok", "국물은 괜찮았는데 간이 좀 셌어")
-        surface.rememberFromReview(turn.reviewId, turn.offers.single())
+
+        surface.acceptFromReview(
+            daon, turn.reviewId, turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
+
+        val learned = surface.state().facts.values.single {
+            it.kind == FactKind.STABLE && it.value == "salt.light"
+        }
+        assertEquals("menu.daon.clear", learned.scopeMenuId)
+        assertEquals(Permission.AUTO_APPLY, learned.permission)
+        assertEquals(
+            "the review keeps the id of exactly what it created",
+            listOf(learned.factId),
+            surface.reviews().single().derivedFactIds,
+        )
+    }
+
+    @Test
+    fun `an approved override applies to the same menu later and nowhere else`() {
+        val surface = surface()
+        placeOrder(surface)
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+        surface.acceptFromReview(
+            daon, turn.reviewId, turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
+
+        // The same restaurant and menu: the override fills the line unasked.
+        surface.nextOrderSession(daon)
+        surface.addLine(daon, "menu.daon.clear")
+        assertEquals("salt.light", surface.lineField("l1", Slots.SALTINESS)?.value)
+        assertEquals(FieldStatus.AUTO_APPLIED, surface.lineField("l1", Slots.SALTINESS)?.status)
+
+        // A different restaurant: the exact pair does not match, so it asks.
         surface.nextOrderSession(ongi)
-        surface.advanceTime()
-        assertNotNull(surface.state().facts.values.firstOrNull { it.kind == FactKind.OUTCOME })
+        surface.addLine(ongi, "menu.ongi.perilla")
+        assertEquals(
+            "one bowl's remark does not follow the user across restaurants",
+            FieldStatus.NEEDS_CONFIRMATION,
+            surface.lineField("l1", Slots.SALTINESS)?.status,
+        )
+        assertNull(surface.lineField("l1", Slots.SALTINESS)?.value)
+    }
+
+    @Test
+    fun `accepting for the menu type crosses restaurants on the authored type only`() {
+        val surface = surface()
+        placeOrder(surface)
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+        surface.acceptFromReview(
+            daon, turn.reviewId, turn.offers.single(), PreferenceScopeLevel.MENU_TYPE,
+        )
+
+        surface.nextOrderSession(ongi)
+        surface.addLine(ongi, "menu.ongi.perilla")
+        assertEquals(
+            "the same authored soup type at another restaurant reuses the value",
+            "salt.light",
+            surface.lineField("l1", Slots.SALTINESS)?.value,
+        )
+        assertEquals(FieldStatus.AUTO_APPLIED, surface.lineField("l1", Slots.SALTINESS)?.status)
+    }
+
+    // ------------------------------------------------------------- deleting
+
+    @Test
+    fun `deleting a review takes back exactly what it created`() {
+        val surface = surface()
+        placeOrder(surface)
+        // The same value also exists as the user's own independent global choice.
+        surface.remember(daon, catalog.slot(Slots.SALTINESS), "salt.light", stable = true)
+        val turn = surface.submitReview(daon, "rating.ok", "국물은 괜찮았는데 간이 좀 셌어")
+        surface.acceptFromReview(
+            daon, turn.reviewId, turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
 
         surface.deleteReview(turn.reviewId)
         val after = surface.state()
 
         assertTrue("the review is gone", after.reviews.isEmpty())
-        assertFalse(
-            "the text is gone from state",
-            after.encode().contains("국물은 괜찮았는데"),
-        )
+        assertFalse("the text is gone from state", after.encode().contains("국물은 괜찮았는데"))
         assertTrue(
-            "the memory it produced is gone",
-            after.facts.values.none { it.kind == FactKind.OUTCOME },
+            "the override the review created is gone",
+            after.facts.values.none { it.scopeMenuId == "menu.daon.clear" && it.value == "salt.light" },
         )
-        assertTrue(after.appliedOutcomes.isEmpty())
         assertTrue("a marker remains", after.tombstones.isNotEmpty())
+        assertTrue(
+            "the user's own independent preference with the same value survives",
+            after.facts.values.any {
+                it.value == "salt.light" && it.scopeMenuId == null && it.menuTypeId == null
+            },
+        )
         assertTrue(
             "the preference stored while ordering is untouched",
             after.facts.values.any { it.value == "spice.mild" },
@@ -237,25 +271,112 @@ class ReviewMemoryTest {
     }
 
     @Test
-    fun `a deleted review is not restored by time passing again`() {
+    fun `a deleted review's memory is not restored by time or a restart`() {
         val store = InMemoryStateStore()
         val surface = surface(store)
         placeOrder(surface)
         val turn = surface.submitReview(daon, "rating.ok", "간이 셌어")
-        surface.rememberFromReview(turn.reviewId, turn.offers.single())
+        surface.acceptFromReview(
+            daon, turn.reviewId, turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
         surface.deleteReview(turn.reviewId)
 
-        surface.nextOrderSession(ongi)
+        surface.nextOrderSession(daon)
         surface.advanceTime()
-        val relaunched = surface(store, process = "review-3")
+        val relaunched = surface(store, process = "review-2")
         relaunched.advanceTime()
+        relaunched.nextOrderSession(daon)
+        relaunched.addLine(daon, "menu.daon.clear")
 
         assertTrue(
-            "neither the scheduled nor the applied result came back",
-            relaunched.state().facts.values.none { it.kind == FactKind.OUTCOME },
+            "the deleted override did not come back",
+            relaunched.state().facts.values.none {
+                it.scopeMenuId == "menu.daon.clear" && it.value == "salt.light"
+            },
         )
-        assertTrue(relaunched.state().pendingOutcomes.isEmpty())
+        assertEquals(
+            FieldStatus.NEEDS_CONFIRMATION,
+            relaunched.lineField("l1", Slots.SALTINESS)?.status,
+        )
         assertFalse(relaunched.state().encode().contains("간이 셌어"))
+    }
+
+    // ------------------------------------------------- the rating request
+
+    @Test
+    fun `the rating request arrives exactly once and expires on its own`() {
+        val store = InMemoryStateStore()
+        val surface = surface(store)
+        placeOrder(surface)
+        assertFalse("nothing arrived before time moves", surface.pendingEvaluationRequest())
+
+        surface.advanceTime()
+        assertTrue("the request arrived with virtual time", surface.pendingEvaluationRequest())
+        val arrivals = surface.state().appliedOutcomes.keys.filter { it.contains("review.request") }
+        assertEquals(1, arrivals.size)
+
+        // A restart and more time never deliver the same request again.
+        val relaunched = surface(store, process = "review-3")
+        relaunched.advanceTime()
+        assertEquals(
+            1,
+            relaunched.state().appliedOutcomes.keys.count { it.contains("review.request") },
+        )
+
+        // It is a passing notice: shortly later it no longer stands anywhere.
+        relaunched.advanceTime()
+        assertFalse(relaunched.pendingEvaluationRequest())
+    }
+
+    @Test
+    fun `answering with a review takes the arrived request down`() {
+        val surface = surface()
+        placeOrder(surface)
+        surface.advanceTime()
+        assertTrue(surface.pendingEvaluationRequest())
+
+        surface.submitReview(daon, "rating.ok", "간이 셌어")
+
+        assertFalse("the request was answered", surface.pendingEvaluationRequest())
+        assertEquals(
+            "the arrival stays recorded exactly once",
+            1,
+            surface.state().appliedOutcomes.keys.count { it.contains("review.request") },
+        )
+    }
+
+    // ------------------------------------------------- ambiguous target
+
+    @Test
+    fun `a review of a many-menu order stays unattributed until the menu is named`() {
+        val surface = surface()
+        surface.startNewOrder(ongi)
+        surface.addLine(ongi, "menu.ongi.perilla")
+        surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.normal", stable = false)
+        surface.remember(ongi, catalog.slot(Slots.RICE), "rice.normal", stable = false)
+        surface.remember(ongi, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = false)
+        surface.addLine(ongi, "menu.ongi.dumpling")
+        surface.requestDecision(ongi)
+
+        val turn = surface.submitReview(ongi, "rating.good", "간이 셌어")
+
+        assertTrue("two menus were ordered, so the target has to be asked", turn.needsTarget)
+        assertTrue("no offer is made before the target is settled", turn.offers.isEmpty())
+        assertNull(surface.reviews().single().lineValueToken)
+        assertTrue(
+            "an unattributed rating is no menu's evidence",
+            Recommender(catalog).tallies(surface.state(), ongi).isEmpty(),
+        )
+
+        val offers = surface.setReviewTarget(ongi, turn.reviewId, "menu.ongi.perilla")
+
+        assertEquals(1, offers.size)
+        assertEquals("menu.ongi.perilla", surface.reviews().single().lineValueToken)
+        assertTrue(
+            Recommender(catalog).tallies(surface.state(), ongi)
+                .containsKey("menu.ongi.perilla"),
+        )
     }
 
     @Test
@@ -263,7 +384,10 @@ class ReviewMemoryTest {
         val surface = surface()
         placeOrder(surface)
         val turn = surface.submitReview(daon, "rating.ok", "국물은 괜찮았는데 간이 좀 셌어")
-        surface.rememberFromReview(turn.reviewId, turn.offers.single())
+        surface.acceptFromReview(
+            daon, turn.reviewId, turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
 
         assertFalse(intake.usesModel)
         assertEquals(0, intake.invocations)

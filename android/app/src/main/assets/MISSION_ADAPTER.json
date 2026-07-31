@@ -18,8 +18,8 @@
       "evidence_path": "evidence/state/context_selection.json"
     },
     "STABLE_VALUE": {
-      "mission_meaning": "여러 주문 session에서 재사용하도록 사용자가 명시한 안정 취향. preserved scope가 있으면 자동 적용이 허용된 option semantics다.",
-      "production_state_field": "ProductionState.facts[kind=STABLE].value",
+      "mission_meaning": "여러 주문 session에서 재사용하도록 사용자가 명시한 안정 취향. preserved scope가 있으면 자동 적용이 허용된 option semantics다. 제품 화면은 전역·메뉴 유형·식당별 메뉴 예외의 세 적용 범위를 구조 필드(baseSlotId·specificity·menuTypeId·scopeMenuId)로 함께 저장하며, 범위 필드가 없는 probe 입력은 기존과 같은 무범위 fact로 저장된다.",
+      "production_state_field": "ProductionState.facts[kind=STABLE].value (+baseSlotId, specificity, menuTypeId, scopeMenuId)",
       "evidence_path": "evidence/state/facts.json"
     },
     "ONE_OFF_VALUE": {
@@ -43,7 +43,7 @@
       "evidence_path": "evidence/state/recovery.json"
     },
     "DELAYED_OUTCOME": {
-      "mission_meaning": "virtual time 뒤 도착해 다음 추천 또는 주문 판단을 바꾸는 만족도나 catalog 결과. app-local 정본에 정확히 한 번 기록되고 permission 상태와 무관하다.",
+      "mission_meaning": "virtual time 뒤 도착해 다음 추천 또는 주문 판단을 바꾸는 만족도나 catalog 결과. app-local 정본에 정확히 한 번 기록되고 permission 상태와 무관하다. 제품의 주문 뒤 평가 요청도 같은 경로로 도착하는 지나가는 알림이며, 만료 시각이 있으면 그 뒤에는 판단에 서지 않는다.",
       "production_state_field": "ProductionState.pendingOutcomes, ProductionState.appliedOutcomes",
       "evidence_path": "evidence/ledger/outcomes.json"
     },

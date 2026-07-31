@@ -138,6 +138,23 @@ data class Fact(
     val createdAtVirtual: String,
     val expiresAtVirtual: String?,
     val seq: Long,
+    /**
+     * The order field this value competes for when [slotId] is a scoped address
+     * of it. Three preference scopes of one option slot keep three distinct
+     * [slotId]s, and this is what lets them meet in one draft field. Null means
+     * [slotId] itself is the base, which is every fact the probe path stores.
+     */
+    val baseSlotId: String? = null,
+    /**
+     * How narrowly this value is scoped: 0 applies wherever the base slot is
+     * offered, 1 only to declared lines of one menu type, 2 only to one exact
+     * menu. Structural, so the engine never parses it out of a token spelling.
+     */
+    val specificity: Int = 0,
+    /** Menu-type token a specificity-1 value is bound to. */
+    val menuTypeId: String? = null,
+    /** Exact menu token a specificity-2 value is bound to. */
+    val scopeMenuId: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("factId", factId)
@@ -157,6 +174,10 @@ data class Fact(
         .put("createdAtVirtual", createdAtVirtual)
         .put("expiresAtVirtual", expiresAtVirtual ?: JSONObject.NULL)
         .put("seq", seq)
+        .put("baseSlotId", baseSlotId ?: JSONObject.NULL)
+        .put("specificity", specificity)
+        .put("menuTypeId", menuTypeId ?: JSONObject.NULL)
+        .put("scopeMenuId", scopeMenuId ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(json: JSONObject): Fact = Fact(
@@ -177,6 +198,70 @@ data class Fact(
             createdAtVirtual = json.getString("createdAtVirtual"),
             expiresAtVirtual = json.optNullableString("expiresAtVirtual"),
             seq = json.getLong("seq"),
+            baseSlotId = json.optNullableString("baseSlotId"),
+            specificity = json.optInt("specificity", 0),
+            menuTypeId = json.optNullableString("menuTypeId"),
+            scopeMenuId = json.optNullableString("scopeMenuId"),
+        )
+    }
+}
+
+/**
+ * One slot of one declared order line.
+ *
+ * [lineSlotId] is the draft field the line owns. [baseSlotId] is the option slot
+ * whose scoped preferences may fill it; null means only a value addressed
+ * directly at this line can, which is how a menu choice and a quantity stay the
+ * user's own.
+ */
+data class LineSlotBinding(
+    val lineSlotId: String,
+    val baseSlotId: String?,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("lineSlotId", lineSlotId)
+        .put("baseSlotId", baseSlotId ?: JSONObject.NULL)
+
+    companion object {
+        fun fromJson(json: JSONObject): LineSlotBinding = LineSlotBinding(
+            lineSlotId = json.getString("lineSlotId"),
+            baseSlotId = json.optNullableString("baseSlotId"),
+        )
+    }
+}
+
+/**
+ * One declared order line of the current draft.
+ *
+ * The product surface declares the lines the way it declares the option schema:
+ * as catalog data about the current draft, not as a second decision path. Probe
+ * input declares no lines, so this list stays empty there and projection keeps
+ * its one-field-per-slot shape.
+ *
+ * [lineId] is stable inside the current draft and never reused after removal, so
+ * dependencies, prices and review attribution stay unambiguous even when the
+ * same menu is added twice with different options.
+ */
+data class DraftLineDecl(
+    val lineId: String,
+    /** Menu token this line currently holds, once the user picked one. */
+    val menuValueToken: String?,
+    /** Catalog-authored menu type of [menuValueToken]. */
+    val menuTypeToken: String?,
+    val slots: List<LineSlotBinding>,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("lineId", lineId)
+        .put("menuValueToken", menuValueToken ?: JSONObject.NULL)
+        .put("menuTypeToken", menuTypeToken ?: JSONObject.NULL)
+        .put("slots", JSONArray().also { array -> slots.forEach { array.put(it.toJson()) } })
+
+    companion object {
+        fun fromJson(json: JSONObject): DraftLineDecl = DraftLineDecl(
+            lineId = json.getString("lineId"),
+            menuValueToken = json.optNullableString("menuValueToken"),
+            menuTypeToken = json.optNullableString("menuTypeToken"),
+            slots = json.getJSONArray("slots").objects().map(LineSlotBinding::fromJson),
         )
     }
 }
@@ -321,6 +406,12 @@ data class PendingOutcome(
     val entityId: String?,
     val scheduledAtVirtual: String,
     val seq: Long,
+    /**
+     * When the materialised fact should stop applying, for an outcome that is a
+     * passing notice — such as a request to rate the finished order — rather
+     * than a lasting result. Null keeps the fact until acted on.
+     */
+    val expiresAtVirtual: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("outcomeId", outcomeId)
@@ -330,6 +421,7 @@ data class PendingOutcome(
         .put("entityId", entityId ?: JSONObject.NULL)
         .put("scheduledAtVirtual", scheduledAtVirtual)
         .put("seq", seq)
+        .put("expiresAtVirtual", expiresAtVirtual ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(json: JSONObject): PendingOutcome = PendingOutcome(
@@ -340,6 +432,7 @@ data class PendingOutcome(
             entityId = json.optNullableString("entityId"),
             scheduledAtVirtual = json.getString("scheduledAtVirtual"),
             seq = json.getLong("seq"),
+            expiresAtVirtual = json.optNullableString("expiresAtVirtual"),
         )
     }
 }
@@ -470,6 +563,12 @@ data class ReviewRecord(
     val atVirtual: String,
     val derivedValueTokens: List<String>,
     val seq: Long,
+    /**
+     * Exact ids of the scoped stable facts the user approved from this review.
+     * Deleting the review removes precisely these, so a same-valued preference
+     * the user stated independently is never taken down with it.
+     */
+    val derivedFactIds: List<String> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("reviewId", reviewId)
@@ -481,6 +580,7 @@ data class ReviewRecord(
         .put("atVirtual", atVirtual)
         .put("derivedValueTokens", JSONArray(derivedValueTokens))
         .put("seq", seq)
+        .put("derivedFactIds", JSONArray(derivedFactIds))
 
     companion object {
         fun fromJson(json: JSONObject): ReviewRecord = ReviewRecord(
@@ -493,6 +593,7 @@ data class ReviewRecord(
             atVirtual = json.getString("atVirtual"),
             derivedValueTokens = json.getJSONArray("derivedValueTokens").strings(),
             seq = json.getLong("seq"),
+            derivedFactIds = json.optJSONArray("derivedFactIds")?.strings().orEmpty(),
         )
     }
 }

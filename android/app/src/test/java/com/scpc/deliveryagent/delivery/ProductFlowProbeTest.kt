@@ -43,6 +43,12 @@ class ProductFlowProbeTest {
     private fun ProductSurface.field(scopeToken: String) =
         state().fields[catalog.slot(scopeToken).fieldId]
 
+    private fun ProductSurface.lineField(lineId: String, baseScopeToken: String) =
+        state().fields[LineTokens.optionFieldId(lineId, baseScopeToken)]
+
+    private fun ProductSurface.menuField(lineId: String) =
+        state().fields[LineTokens.menuFieldId(lineId)]
+
     private fun decision(outcome: com.scpc.deliveryagent.core.StepOutcome): String =
         outcome.result.getString("decision_state")
 
@@ -51,8 +57,9 @@ class ProductFlowProbeTest {
         surface.startNewOrder(daon)
         surface.remember(daon, catalog.slot(Slots.BUDGET), "budget.20000", stable = false)
         surface.remember(daon, catalog.slot(Slots.WARMTH), "warmth.soup", stable = false)
-        surface.chooseLine(daon, catalog.slot(Slots.MAIN), "menu.daon.clear")
+        surface.addLine(daon, "menu.daon.clear")
         surface.remember(daon, catalog.slot(Slots.SPICINESS), "spice.mild", stable = true)
+        surface.remember(daon, catalog.slot(Slots.SALTINESS), "salt.normal", stable = false)
         surface.remember(daon, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = true)
         surface.remember(daon, catalog.slot(Slots.RICE), "rice.normal", stable = true)
     }
@@ -84,7 +91,7 @@ class ProductFlowProbeTest {
         surface.requestDecision(daon)
 
         surface.nextOrderSession(ongi)
-        surface.chooseLine(ongi, catalog.slot(Slots.MAIN), "menu.ongi.perilla")
+        surface.addLine(ongi, "menu.ongi.perilla")
         val outcome = surface.requestDecision(ongi)
 
         assertEquals(
@@ -99,9 +106,14 @@ class ProductFlowProbeTest {
         )
         assertEquals("spice.mild", surface.field(Slots.SPICINESS)?.value)
         assertEquals(
+            "the stored rice amount fills this line without asking again",
+            FieldStatus.AUTO_APPLIED,
+            surface.lineField("l1", Slots.RICE)?.status,
+        )
+        assertEquals(
             "the option this restaurant adds is the one still asked about",
             FieldStatus.NEEDS_CONFIRMATION,
-            surface.field(Slots.SALTINESS)?.status,
+            surface.lineField("l1", Slots.SALTINESS)?.status,
         )
         assertEquals("ASK", decision(outcome))
 
@@ -168,30 +180,30 @@ class ProductFlowProbeTest {
         surface.requestDecision(daon)
 
         surface.nextOrderSession(ongi)
-        surface.chooseLine(ongi, catalog.slot(Slots.MAIN), "menu.ongi.perilla")
+        surface.addLine(ongi, "menu.ongi.perilla")
         surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
-        surface.chooseLine(ongi, catalog.slot(Slots.SIDE), "side.dumpling")
+        surface.addLine(ongi, "menu.ongi.dumpling")
         surface.addRequestNote(ongi, "note.sauce_separate")
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
 
         val totalBefore = pricing.total(surface.state())
         assertEquals(14_300, totalBefore)
 
-        // The side goes out of stock at a higher catalog version.
-        surface.applyCatalogEvent("catalog.ongi.side.dumpling.soldout")
+        // The side line goes out of stock at a higher catalog version.
+        surface.applyCatalogEvent("catalog.ongi.menu.dumpling.soldout")
 
         assertEquals(
             "the sold-out line has to be chosen again",
             FieldStatus.NEEDS_CONFIRMATION,
-            surface.field(Slots.SIDE)?.status,
+            surface.menuField("l2")?.status,
         )
-        assertEquals("side.dumpling.soldout", surface.field(Slots.SIDE)?.value)
+        assertEquals("menu.ongi.dumpling.soldout", surface.menuField("l2")?.value)
         assertEquals(
             "the main line the user confirmed is preserved",
             "menu.ongi.perilla",
-            surface.field(Slots.MAIN)?.value,
+            surface.menuField("l1")?.value,
         )
-        assertEquals(FieldStatus.CONFIRMED, surface.field(Slots.MAIN)?.status)
+        assertEquals(FieldStatus.CONFIRMED, surface.menuField("l1")?.status)
         assertEquals(
             "an independent option is preserved",
             FieldStatus.AUTO_APPLIED,
@@ -215,11 +227,11 @@ class ProductFlowProbeTest {
         assertEquals(
             "the main line survives the deletion",
             "menu.ongi.perilla",
-            surface.field(Slots.MAIN)?.value,
+            surface.menuField("l1")?.value,
         )
 
-        // Choosing a replacement completes the order again.
-        surface.chooseLine(ongi, catalog.slot(Slots.SIDE), "side.rice_ball")
+        // Choosing a replacement for that line completes the order again.
+        surface.chooseLineMenu(ongi, "l2", "menu.ongi.riceball")
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
         assertEquals(13_600, pricing.total(surface.state()))
     }
@@ -229,11 +241,11 @@ class ProductFlowProbeTest {
         val surface = surface()
         surface.startNewOrder(ongi)
         surface.remember(ongi, catalog.slot(Slots.BUDGET), "budget.10000", stable = false)
-        surface.chooseLine(ongi, catalog.slot(Slots.MAIN), "menu.ongi.perilla")
+        surface.addLine(ongi, "menu.ongi.perilla")
         surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
         surface.remember(ongi, catalog.slot(Slots.RICE), "rice.normal", stable = false)
         surface.remember(ongi, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = false)
-        surface.chooseLine(ongi, catalog.slot(Slots.SIDE), "side.rice_ball")
+        surface.addLine(ongi, "menu.ongi.riceball")
 
         val outcome = surface.requestDecision(ongi)
         assertTrue(pricing.total(surface.state()) > pricing.budgetLimit(surface.state())!!)
@@ -248,10 +260,10 @@ class ProductFlowProbeTest {
     @Test
     fun `an option the current menu does not offer is refused`() {
         val surface = surface()
-        surface.startNewOrder(daon)
+        surface.startNewOrder(ongi)
         val refused = try {
-            // 간 세기 is not part of this restaurant's option schema.
-            surface.remember(daon, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
+            // 맵기 is not part of this restaurant's option schema.
+            surface.remember(ongi, catalog.slot(Slots.SPICINESS), "spice.mild", stable = false)
             false
         } catch (expected: IllegalArgumentException) {
             true
@@ -259,7 +271,7 @@ class ProductFlowProbeTest {
         assertTrue("a value outside the current menu must be refused", refused)
 
         val wrongValue = try {
-            surface.chooseLine(daon, catalog.slot(Slots.MAIN), "menu.ongi.perilla")
+            surface.addLine(ongi, "menu.daon.clear")
             false
         } catch (expected: IllegalArgumentException) {
             true
@@ -277,7 +289,7 @@ class ProductFlowProbeTest {
 
         val first = surfaceIn("flow-process-1")
         first.startNewOrder(ongi)
-        first.chooseLine(ongi, catalog.slot(Slots.MAIN), "menu.ongi.perilla")
+        first.addLine(ongi, "menu.ongi.perilla")
         first.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
         val epochBefore = first.state().processEpoch
 
@@ -289,7 +301,7 @@ class ProductFlowProbeTest {
         assertEquals(
             "the chosen line survived the restart",
             "menu.ongi.perilla",
-            second.field(Slots.MAIN)?.value,
+            second.menuField("l1")?.value,
         )
         assertTrue(
             "an order that was never confirmed is not reported as placed",
