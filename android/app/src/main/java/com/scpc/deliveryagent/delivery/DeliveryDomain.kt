@@ -2,11 +2,14 @@ package com.scpc.deliveryagent.delivery
 
 import com.scpc.deliveryagent.core.AsprEngine
 import com.scpc.deliveryagent.core.DepKind
+import com.scpc.deliveryagent.core.DraftConfiguration
+import com.scpc.deliveryagent.core.DraftConstraint
 import com.scpc.deliveryagent.core.DraftField
 import com.scpc.deliveryagent.core.DraftLineDecl
 import com.scpc.deliveryagent.core.FactKind
 import com.scpc.deliveryagent.core.FieldStatus
 import com.scpc.deliveryagent.core.LineSlotBinding
+import com.scpc.deliveryagent.core.PostCommitOutcome
 import com.scpc.deliveryagent.core.ProbeStep
 import com.scpc.deliveryagent.core.ProductionCore
 import com.scpc.deliveryagent.core.ProductionState
@@ -331,26 +334,24 @@ class ProductSurface(
     fun state(): ProductionState = core.state()
 
     fun startNewOrder(restaurant: RestaurantDefinition): StepOutcome {
-        val outcome = step(
+        return step(
             operation = ProductionCore.Op.RESET_AND_START,
             roles = roles(Role.PRIMARY_GOAL to GOAL_VALID_DRAFT),
             newSession = true,
+            draftConfiguration = draftConfiguration(restaurant, emptyList()),
         )
-        declareStructure(restaurant, emptyList())
-        return outcome
     }
 
     fun nextOrderSession(restaurant: RestaurantDefinition): StepOutcome {
-        val outcome = step(
+        return step(
             operation = ProductionCore.Op.ADVANCE_SESSION,
             roles = roles(
                 Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
                 Role.TARGET_ENTITY to restaurant.entityToken,
             ),
             newSession = true,
+            draftConfiguration = draftConfiguration(restaurant, emptyList()),
         )
-        declareStructure(restaurant, emptyList())
-        return outcome
     }
 
     /** Order lines of the current draft, oldest first. */
@@ -365,7 +366,10 @@ class ProductSurface(
      * user must choose for every order, and which values the catalog currently
      * cannot fulfil.
      */
-    private fun declareStructure(restaurant: RestaurantDefinition, lines: List<DraftLineDecl>) {
+    private fun draftConfiguration(
+        restaurant: RestaurantDefinition,
+        lines: List<DraftLineDecl>,
+    ): DraftConfiguration {
         val required = mutableListOf<String>()
         val neverAuto = mutableListOf<String>()
         lines.forEach { line ->
@@ -383,15 +387,15 @@ class ProductSurface(
         restaurant.orderLevelSlots.map(catalog::slot).filter { it.required }.forEach { slot ->
             required += slot.slotId
         }
-        core.declareDraftStructure(
+        return DraftConfiguration(
             lines = lines,
-            requiredSlotIds = required,
-            neverAutoApplySlotIds = neverAuto,
+            requiredSlotIds = required.toSet(),
+            neverAutoApplySlotIds = neverAuto.toSet(),
             // Out of stock everywhere, plus anything this kitchen simply does not
             // do. A preference for a heat level this restaurant does not offer is
             // not quietly rounded to the nearest one; that field is asked again.
-            unusableValues = catalog.unusableValueTokens() +
-                catalog.valuesNotOfferedBy(restaurant),
+            unusableValues = (catalog.unusableValueTokens() +
+                catalog.valuesNotOfferedBy(restaurant)).toSet(),
         )
     }
 
@@ -447,8 +451,11 @@ class ProductSurface(
         requireOffered(restaurant, catalog.slot(Slots.MAIN), menuToken)
         val state = state()
         val lineId = nextLineId(state)
-        declareStructure(restaurant, state.draftLines + lineDecl(restaurant, lineId, menuToken))
-        return recordMenuChoice(restaurant, lineId, menuToken)
+        val configuration = draftConfiguration(
+            restaurant,
+            state.draftLines + lineDecl(restaurant, lineId, menuToken),
+        )
+        return recordMenuChoice(restaurant, lineId, menuToken, configuration)
     }
 
     /** Replaces the menu of one existing line. The other lines are untouched. */
@@ -460,17 +467,18 @@ class ProductSurface(
         requireOffered(restaurant, catalog.slot(Slots.MAIN), menuToken)
         val current = state().draftLines
         require(current.any { it.lineId == lineId }) { "no order line $lineId" }
-        declareStructure(
+        val configuration = draftConfiguration(
             restaurant,
             current.map { if (it.lineId == lineId) lineDecl(restaurant, lineId, menuToken) else it },
         )
-        return recordMenuChoice(restaurant, lineId, menuToken)
+        return recordMenuChoice(restaurant, lineId, menuToken, configuration)
     }
 
     private fun recordMenuChoice(
         restaurant: RestaurantDefinition,
         lineId: String,
         menuToken: String,
+        configuration: DraftConfiguration,
     ): StepOutcome {
         val outcome = step(
             operation = ProductionCore.Op.UPSERT_FACT,
@@ -481,8 +489,9 @@ class ProductSurface(
                 Role.PRESERVED_SCOPE to LineTokens.menu(lineId),
                 Role.ONE_OFF_VALUE to menuToken,
             ),
+            userConfirmedSlotIds = listOf(LineTokens.menuSlotId(lineId)),
+            draftConfiguration = configuration,
         )
-        core.confirmUserChoice(listOf(LineTokens.menuSlotId(lineId)))
         return outcome
     }
 
@@ -496,18 +505,30 @@ class ProductSurface(
     fun removeLine(restaurant: RestaurantDefinition, lineId: String): StepOutcome? {
         val state = state()
         val line = state.draftLines.firstOrNull { it.lineId == lineId } ?: return null
-        var last: StepOutcome? = null
-        line.slots.forEach { binding ->
-            if (state.facts.values.any { it.slotId == binding.lineSlotId }) {
-                last = step(
-                    operation = ProductionCore.Op.DELETE_FACT,
-                    roles = roles(
-                        Role.PRESERVED_SCOPE to binding.lineSlotId.removePrefix("slot."),
-                    ),
-                )
-            }
+        val configuration = draftConfiguration(
+            restaurant,
+            state.draftLines.filter { it.lineId != lineId },
+        )
+        val storedBindings = line.slots.filter { binding ->
+            state.facts.values.any { it.slotId == binding.lineSlotId }
         }
-        declareStructure(restaurant, state().draftLines.filter { it.lineId != lineId })
+        if (storedBindings.isEmpty()) {
+            return step(
+                operation = ProductionCore.Op.DELETE_FACT,
+                roles = roles(Role.PRESERVED_SCOPE to LineTokens.menu(lineId)),
+                draftConfiguration = configuration,
+            )
+        }
+        var last: StepOutcome? = null
+        storedBindings.forEachIndexed { index, binding ->
+            last = step(
+                operation = ProductionCore.Op.DELETE_FACT,
+                roles = roles(
+                    Role.PRESERVED_SCOPE to binding.lineSlotId.removePrefix("slot."),
+                ),
+                draftConfiguration = configuration.takeIf { index == storedBindings.lastIndex },
+            )
+        }
         return last
     }
 
@@ -554,8 +575,8 @@ class ProductSurface(
                 Role.PRESERVED_SCOPE to LineTokens.quantity(lineId),
                 Role.ONE_OFF_VALUE to quantityToken,
             ),
+            userConfirmedSlotIds = listOf(LineTokens.quantitySlotId(lineId)),
         )
-        core.confirmUserChoice(listOf(LineTokens.quantitySlotId(lineId)))
         return outcome
     }
 
@@ -565,8 +586,12 @@ class ProductSurface(
         slot: SlotDefinition,
         value: String,
         stable: Boolean,
+        sourceReviewId: String? = null,
     ): StepOutcome {
         requireOffered(restaurant, slot, value)
+        val extraRoles = sourceReviewId
+            ?.let { arrayOf(RoleExt.SOURCE_REVIEW_ID to it) }
+            .orEmpty()
         return step(
             operation = ProductionCore.Op.UPSERT_FACT,
             roles = roles(
@@ -584,6 +609,7 @@ class ProductSurface(
                         arrayOf(Role.ONE_OFF_VALUE to value)
                     }
                     ),
+                *extraRoles,
             ),
         )
     }
@@ -603,6 +629,7 @@ class ProductSurface(
         slot: SlotDefinition,
         value: String,
         menuTypeToken: String,
+        sourceReviewId: String? = null,
     ): StepOutcome {
         requireOffered(restaurant, slot, value)
         val menuType = catalog.menuType(menuTypeToken)
@@ -620,6 +647,9 @@ class ProductSurface(
                 RoleExt.SPECIFICITY to "1",
                 RoleExt.MENU_TYPE_ID to menuTypeToken,
                 Role.STABLE_VALUE to value,
+                *(sourceReviewId
+                    ?.let { arrayOf(RoleExt.SOURCE_REVIEW_ID to it) }
+                    .orEmpty()),
             ),
         )
     }
@@ -636,6 +666,7 @@ class ProductSurface(
         slot: SlotDefinition,
         value: String,
         menuToken: String,
+        sourceReviewId: String? = null,
     ): StepOutcome {
         requireOffered(restaurant, slot, value)
         val menu = catalog.value(menuToken)
@@ -657,6 +688,9 @@ class ProductSurface(
                 RoleExt.SPECIFICITY to "2",
                 RoleExt.SCOPE_MENU_ID to menuToken,
                 Role.STABLE_VALUE to value,
+                *(sourceReviewId
+                    ?.let { arrayOf(RoleExt.SOURCE_REVIEW_ID to it) }
+                    .orEmpty()),
             ),
         )
     }
@@ -863,47 +897,39 @@ class ProductSurface(
         val menuToken = review.lineValueToken
         val outcome = when (level) {
             PreferenceScopeLevel.GLOBAL_DEFAULT ->
-                remember(restaurant, slot, candidate.impliesValue, stable = true)
+                remember(
+                    restaurant,
+                    slot,
+                    candidate.impliesValue,
+                    stable = true,
+                    sourceReviewId = reviewId,
+                )
 
             PreferenceScopeLevel.MENU_TYPE -> {
                 requireNotNull(menuToken) { "review target menu is not settled" }
                 val type = catalog.value(menuToken)?.menuType
                     ?: error("menu $menuToken has no authored type")
-                rememberForMenuType(restaurant, slot, candidate.impliesValue, type)
+                rememberForMenuType(
+                    restaurant,
+                    slot,
+                    candidate.impliesValue,
+                    type,
+                    sourceReviewId = reviewId,
+                )
             }
 
             PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE -> {
                 requireNotNull(menuToken) { "review target menu is not settled" }
-                rememberForMenu(restaurant, slot, candidate.impliesValue, menuToken)
+                rememberForMenu(
+                    restaurant,
+                    slot,
+                    candidate.impliesValue,
+                    menuToken,
+                    sourceReviewId = reviewId,
+                )
             }
         }
-        core.linkReviewMemory(
-            reviewId = reviewId,
-            valueToken = candidate.impliesValue,
-            factId = scopedStableFactId(restaurant, slot, level, menuToken),
-        )
         return outcome
-    }
-
-    private fun scopedStableFactId(
-        restaurant: RestaurantDefinition,
-        slot: SlotDefinition,
-        level: PreferenceScopeLevel,
-        menuToken: String?,
-    ): String {
-        val scopeToken = when (level) {
-            PreferenceScopeLevel.GLOBAL_DEFAULT -> PreferenceScopes.global(slot.scopeToken)
-            PreferenceScopeLevel.MENU_TYPE -> PreferenceScopes.menuType(
-                slot.scopeToken,
-                catalog.value(menuToken!!)!!.menuType!!,
-            )
-            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE -> PreferenceScopes.menuOverride(
-                slot.scopeToken,
-                restaurant.entityToken,
-                menuToken!!,
-            )
-        }
-        return AsprEngine.factIdFor(FactKind.STABLE, Ids.state("slot", scopeToken))
     }
 
     /** Declines one thing a review said. The review stays; no memory is created. */
@@ -1023,39 +1049,22 @@ class ProductSurface(
                 "예상시간 ${estimate}분이 희망 ${etaLimit}분을 넘습니다"
             else -> null
         }
-        core.declareDraftConstraint(satisfied = reason == null, reason = reason.orEmpty())
-        val outcome = step(
+        return step(
             operation = ProductionCore.Op.REQUEST_DECISION,
             roles = roles(
                 Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
                 Role.TARGET_ENTITY to restaurant.entityToken,
             ),
-        )
-        if (outcome.result.optString("decision_state") == "ACT") {
-            outcome.result.optJSONObject("action")?.optString("action_id")
-                ?.takeIf { it.isNotEmpty() }
-                ?.let(::scheduleEvaluationRequest)
-        }
-        return outcome
-    }
-
-    /**
-     * Schedules the app-local request to rate this order.
-     *
-     * It arrives once with virtual time, its arrival is recorded exactly once in
-     * the outcome ledger, and it expires shortly on its own so an unanswered
-     * request never stands in a later draft's way. One order schedules one
-     * request, however often the same committed draft is asked about.
-     */
-    private fun scheduleEvaluationRequest(actionId: String) {
-        step(
-            operation = ProductionCore.Op.UPSERT_FACT,
-            roles = roles(
-                Role.PRESERVED_SCOPE to REVIEW_REQUEST_SCOPE,
-                Role.CURRENT_AUTHORITY to nextAuthorityToken(),
-                Role.DELAYED_OUTCOME to "review.request.${Ids.segment(actionId)}",
-                RoleExt.EXPIRES_AT to
-                    virtualTime(state().runStepCount + EVALUATION_REQUEST_TTL_STEPS),
+            draftConstraint = DraftConstraint(
+                satisfied = reason == null,
+                reason = reason.orEmpty(),
+            ),
+            postCommitOutcome = PostCommitOutcome(
+                scopeToken = REVIEW_REQUEST_SCOPE,
+                valuePrefix = REVIEW_REQUEST_SCOPE,
+                expiresAtVirtual = virtualTime(
+                    state.runStepCount + EVALUATION_REQUEST_TTL_STEPS,
+                ),
             ),
         )
     }
@@ -1103,6 +1112,10 @@ class ProductSurface(
         operation: String,
         roles: JSONObject,
         newSession: Boolean = false,
+        userConfirmedSlotIds: Collection<String> = emptySet(),
+        draftConfiguration: DraftConfiguration? = null,
+        draftConstraint: DraftConstraint? = null,
+        postCommitOutcome: PostCommitOutcome? = null,
     ): StepOutcome {
         val current = state()
         val ordinal = current.runStepCount + 1
@@ -1117,6 +1130,10 @@ class ProductSurface(
                 virtualTime = virtualTime(ordinal),
                 roles = roles,
             ),
+            userConfirmedSlotIds = userConfirmedSlotIds,
+            draftConfiguration = draftConfiguration,
+            draftConstraint = draftConstraint,
+            postCommitOutcome = postCommitOutcome,
         )
     }
 

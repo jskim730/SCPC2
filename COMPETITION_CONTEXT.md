@@ -11,7 +11,7 @@ workspace 기준 문서다.
 - 로컬 Kit: `release_v3/`
 - Kit release ID: `SCPC2026-R2-CANDIDATE-RELEASE-V3`
 - Kit 상태: `FROZEN_PARTICIPANT_RELEASE`
-- 구현 상태: 아직 제품 구현을 시작하지 않음
+- 구현 상태: Android 제품 구현 진행 중. 상세 정본은 `android/IMPLEMENTATION_STATUS.md`
 
 > 이 문서는 확인 시점의 공식 정보를 정리한 snapshot이다. Dacon의 새 공지·토크 답변·Kit 교체가 있으면
 > 그 내용이 우선하며, 이 문서의 `변경 기록`과 해당 절을 함께 갱신한다.
@@ -172,6 +172,10 @@ Mission 마감 뒤 다음은 다른 Mission으로 변경할 수 없다.
 화면·기술구조·model·algorithm은 계속 개선할 수 있다. Dacon은 Mission PDF 접수 내용을 기준으로
 `MISSION_LOCK.json`을 생성해 제공하므로 참가자는 이를 직접 생성·수정하지 않는다. Dacon은 제출 전
 Mission 승인·범위판정·수정요청을 제공하지 않는다.
+
+현재 수령 상태(2026-08-01 KST): Dacon 발급본을 저장소 루트 `MISSION_LOCK.json`에 원본 그대로
+보관한다. 식별자는 `candidate_025`, `mission_025`, receipt `DACON-SCPC2026-025`이며 공식 v3 schema
+검증을 통과했다. 이후 Mission 범위 판단에는 이 파일을 최우선으로 사용하고 참가자가 수정하지 않는다.
 
 ## 7. Android release 요구사항
 
@@ -579,14 +583,14 @@ MISSION_LOCK 수령
 
 현재 개발환경:
 
-- Android SDK: 없음
-- Android Studio: 없음
-- `adb`, `apkanalyzer`, `apksigner`: 없음
-- JDK: 21만 설치. JDK 21이 즉시 빌드를 차단한다고 확인된 것은 아니지만 공식 build·sample 재현환경인
-  JDK 17은 아직 없음
+- Android Studio와 Android SDK Platform 35, Build-Tools 35.0.0 설치됨
+- `adb`, `emulator`, `apkanalyzer`, `apksigner` 사용 가능
+- API 35 `default/x86_64` system image와 WHPX 가속 사용 가능, AVD는 아직 생성하지 않음
+- JDK: Android Studio JBR 21. debug·release JVM 148개와 debug/androidTest APK 빌드는 통과했지만
+  공식 재현환경으로 명시된 JDK 17은 아직 별도로 준비하지 않음
 - Python bundled runtime: 존재
-- candidate tool용 `jsonschema` venv: 아직 없음
-- Git repository: 아직 아님
+- `.venv`의 `jsonschema 4.26.0`으로 `MISSION_LOCK.json` 공식 schema 검증 통과
+- Git repository: `https://github.com/jskim730/SCPC2.git`, local `main`이 `origin/main`을 추적
 
 ## 22. 현재 미확인·충돌 항목
 
@@ -629,3 +633,4 @@ Dacon의 새 공지·토크 답변·Kit 교체가 생기면 해당 내용이 이
 |---|---|---|
 | 2026-07-29 10:35 | 최초 공식 웹·Kit·용어집 snapshot 작성 | Dacon 대회 페이지, `release_v3`, 공식 용어집 |
 | 2026-07-29 | 13종 operation과 input step을 구분하고 운영 위험·JDK·수상 인원 충돌을 명시 | Probe schema·contract·수정후보 검토 |
+| 2026-08-01 | Dacon 발급 `MISSION_LOCK.json` 수령·루트 보관·v3 schema 검증, Android 구현 진행 상태 반영 | `MISSION_LOCK.json`, `android/IMPLEMENTATION_STATUS.md` |

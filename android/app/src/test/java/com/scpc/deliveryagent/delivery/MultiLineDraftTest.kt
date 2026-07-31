@@ -113,6 +113,49 @@ class MultiLineDraftTest {
     }
 
     @Test
+    fun `a product confirmation is included in the step digest and evidence boundary`() {
+        val surface = surface()
+        val start = surface.startNewOrder(ongi)
+        val add = surface.addLine(ongi, "menu.ongi.perilla")
+
+        assertEquals(
+            "the line schema and menu choice form one recorded transition",
+            start.result.getString("state_after_sha256"),
+            add.result.getString("state_before_sha256"),
+        )
+        assertEquals(surface.state().digest(), add.result.getString("state_after_sha256"))
+
+        val quantity = surface.setQuantity(ongi, "l1", "qty.2")
+
+        assertEquals(
+            "the persisted field is already confirmed when the step returns",
+            FieldStatus.CONFIRMED,
+            surface.state().fields[
+                com.scpc.deliveryagent.core.AsprEngine.fieldIdFor(
+                    LineTokens.quantitySlotId("l1"),
+                )
+            ]?.status,
+        )
+        assertEquals(
+            "state_after describes the state the product actually persisted",
+            surface.state().digest(),
+            quantity.result.getString("state_after_sha256"),
+        )
+
+        val next = surface.requestDecision(ongi)
+        assertEquals(
+            "consecutive product operations chain without an unrecorded write",
+            quantity.result.getString("state_after_sha256"),
+            next.result.getString("state_before_sha256"),
+        )
+        assertEquals(
+            "the post-commit rating request is also inside the decision boundary",
+            surface.state().digest(),
+            next.result.getString("state_after_sha256"),
+        )
+    }
+
+    @Test
     fun `removing one line keeps the other line and the stored preferences`() {
         val surface = surface()
         surface.startNewOrder(ongi)
@@ -121,7 +164,7 @@ class MultiLineDraftTest {
         surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = true)
         assertEquals(10_800 + 3_500, pricing.total(surface.state()))
 
-        surface.removeLine(ongi, "l2")
+        val removal = surface.removeLine(ongi, "l2")!!
 
         assertNull("the removed line's menu is gone", surface.menuField("l2"))
         assertEquals("menu.ongi.perilla", surface.menuField("l1")?.value)
@@ -132,6 +175,11 @@ class MultiLineDraftTest {
             surface.state().facts.values.any { it.value == "salt.light" },
         )
         assertTrue("removal leaves a marker", surface.state().tombstones.isNotEmpty())
+        assertEquals(
+            "the returned deletion result includes the final line structure",
+            surface.state().digest(),
+            removal.result.getString("state_after_sha256"),
+        )
     }
 
     @Test

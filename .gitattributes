@@ -15,3 +15,7 @@
 *.docx binary
 *.png binary
 *.mp4 binary
+
+# Dacon-generated source of truth. Preserve its received bytes exactly; schema
+# validity alone is not a substitute for the original artifact digest.
+MISSION_LOCK.json binary
