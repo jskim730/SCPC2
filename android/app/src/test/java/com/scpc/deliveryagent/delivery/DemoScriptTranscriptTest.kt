@@ -78,7 +78,7 @@ class DemoScriptTranscriptTest {
 
         surface.lines().forEach { line ->
             val menuLabel = line.menuValueToken?.let(catalog::valueLabel) ?: "메뉴 미정"
-            rows += "· 항목 ${line.lineId} — $menuLabel"
+            rows += "· 항목 ${line.lineId.removePrefix("l")} — $menuLabel"
             line.slots.forEach { binding ->
                 val field = state.fields[AsprEngine.fieldIdFor(binding.lineSlotId)]
                     ?: return@forEach

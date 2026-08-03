@@ -364,7 +364,8 @@ class SyntheticCatalog private constructor(
         LineTokens.parseSlotId(slotId)?.let { parsed ->
             val base = slotsByToken[parsed.baseScopeToken]
             val baseLabel = base?.label ?: parsed.baseScopeToken
-            return "항목 ${parsed.lineId} · $baseLabel"
+            // The internal id is "l3"; a person reads "항목 3".
+            return "항목 ${parsed.lineId.removePrefix("l")} · $baseLabel"
         }
         slots.forEach { slot ->
             if (slotId == slot.slotId || slotId.startsWith("${slot.slotId}.")) {

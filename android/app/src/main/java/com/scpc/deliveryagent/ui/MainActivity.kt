@@ -3,7 +3,9 @@ package com.scpc.deliveryagent.ui
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Toast
 import com.scpc.deliveryagent.core.AsprEngine
 import com.scpc.deliveryagent.core.DraftField
@@ -60,6 +62,12 @@ class MainActivity : Activity() {
     private var reviewTargetToken: String? = null
     private var lastDecision = "-"
     private var showScript = false
+    private var showDiagnostics = false
+
+    /** Set by the dialog-style actions so the reply scrolls into view. */
+    private var scrollChatIntoView = false
+    private var conversationAnchor: View? = null
+    private lateinit var scroller: ScrollView
 
     private val catalog: SyntheticCatalog get() = Production.catalog(this)
     private val pricing: DraftPricing get() = DraftPricing(catalog)
@@ -80,7 +88,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         content = Ui.column(this)
-        setContentView(Ui.scroller(this, content))
+        scroller = Ui.scroller(this, content)
+        setContentView(scroller)
         render()
     }
 
@@ -92,6 +101,7 @@ class MainActivity : Activity() {
     // ----------------------------------------------------------------- chat
 
     private fun onSend(message: String) {
+        scrollChatIntoView = true
         chat += ChatLine("나:", message)
         val restaurant = currentRestaurant()
         if (restaurant == null) {
@@ -142,6 +152,7 @@ class MainActivity : Activity() {
     /** Answers the reuse-scope question for everything the last message left open. */
     private fun answerScope(remember: Boolean) {
         val restaurant = currentRestaurant() ?: return
+        scrollChatIntoView = true
         val pending = pendingScope
         pendingScope = emptyList()
         pending.forEach { value ->
@@ -170,6 +181,13 @@ class MainActivity : Activity() {
         val parsed = LineTokens.parseSlotId(field.slotId)
         val baseSlot = if (parsed == null) catalog.slotOfFieldSlotId(field.slotId) else null
         if (parsed == null && baseSlot == null) return
+        scrollChatIntoView = true
+        // The tap goes into the transcript before the redraw so the screen the
+        // user sees next already carries what they just did.
+        chat += ChatLine(
+            "나:",
+            "${catalog.slotLabel(field.slotId)}: ${catalog.valueLabel(valueToken)}",
+        )
         act {
             when {
                 parsed != null && parsed.baseScopeToken == Slots.MAIN ->
@@ -189,10 +207,6 @@ class MainActivity : Activity() {
                 else -> it.remember(restaurant, baseSlot!!, valueToken, stable = false)
             }
         }
-        chat += ChatLine(
-            "나:",
-            "${catalog.slotLabel(field.slotId)}: ${catalog.valueLabel(valueToken)}",
-        )
     }
 
     // --------------------------------------------------------------- render
@@ -210,6 +224,8 @@ class MainActivity : Activity() {
                     "실제 주문·결제·외부 계정은 사용하지 않습니다.",
             ),
         )
+
+        renderStage(state)
 
         content.addView(
             Ui.inputRow(
@@ -229,7 +245,53 @@ class MainActivity : Activity() {
         renderDraft(state)
         renderScript()
         renderInterruptions()
+        renderDiagnostics(state)
         renderNavigation()
+
+        if (scrollChatIntoView) {
+            scrollChatIntoView = false
+            val anchor = conversationAnchor
+            if (anchor != null) scroller.post { scroller.smoothScrollTo(0, anchor.top) }
+        }
+    }
+
+    /**
+     * Where the order stands and the one thing to do next. The five stages are
+     * derived from the same state the sections below render, so this banner can
+     * never disagree with them.
+     */
+    private fun renderStage(state: ProductionState) {
+        val restaurant = currentRestaurant()
+        val stage = when {
+            restaurant == null -> 0
+            surface.pendingEvaluationRequest() -> 4
+            surface.lines().isEmpty() -> 1
+            openQuestions.isNotEmpty() -> 2
+            else -> 3
+        }
+        val path = listOf("식당", "메뉴", "옵션 확인", "확정", "평가")
+            .mapIndexed { index, name -> if (index == stage) "●$name" else name }
+            .joinToString(" → ")
+        content.addView(Ui.mono(this, path))
+        val next = when (stage) {
+            0 -> "아래에서 주문할 식당을 골라 주세요."
+            1 -> "먹고 싶은 것과 조건을 말해 주세요. 추천 후보에서 메뉴를 담습니다."
+            2 -> "확인이 필요한 항목 ${openQuestions.size}개에 답해 주세요."
+            3 -> "확인이 끝났습니다. 아래 버튼으로 이번 주문을 확정할 수 있습니다."
+            else -> "지난 주문이 어땠는지 평가를 남길 수 있습니다."
+        }
+        content.addView(Ui.body(this, "다음 할 일: $next"))
+        if (stage == 3 && restaurant != null && state.fields.isNotEmpty()) {
+            content.addView(
+                Ui.button(
+                    this,
+                    "이대로 확인하고 가상 주문 기록 · 합성 총액 ${pricing.formatAmount(pricing.total(state))}",
+                    primary = true,
+                ) {
+                    act { it.requestDecision(restaurant) }
+                },
+            )
+        }
     }
 
     /** Every synthetic restaurant, offered whenever no order is open yet. */
@@ -241,8 +303,8 @@ class MainActivity : Activity() {
                 this,
                 catalog.restaurants.map { restaurant ->
                     restaurant.name to {
-                        act { it.startNewOrder(restaurant) }
                         chat += ChatLine("에이전트:", "${restaurant.name}으로 새 주문을 시작했습니다.")
+                        act { it.startNewOrder(restaurant) }
                     }
                 },
             ),
@@ -256,7 +318,9 @@ class MainActivity : Activity() {
             )
             return
         }
-        content.addView(Ui.section(this, "대화"))
+        val header = Ui.section(this, "대화")
+        conversationAnchor = header
+        content.addView(header)
         chat.takeLast(MAX_CHAT_LINES).forEach { line ->
             content.addView(Ui.chatLine(this, line.speaker, line.text))
         }
@@ -326,9 +390,9 @@ class MainActivity : Activity() {
                     reasons = candidate.reasons.joinToString(" · ") { "${it.badge} ${it.detail}" },
                     action = if (candidate.offerable) {
                         "이걸로 하기" to {
-                            act { it.addLine(restaurant, candidate.valueToken) }
                             chat += ChatLine("나:", "메뉴: ${candidate.label}")
                             candidates = emptyList()
+                            act { it.addLine(restaurant, candidate.valueToken) }
                         }
                     } else {
                         null
@@ -513,9 +577,8 @@ class MainActivity : Activity() {
             Ui.body(
                 this,
                 buildString {
-                    append("주문 session: ${state.sessionLabel.ifEmpty { "없음" }}\n")
                     val restaurant = currentRestaurant()
-                    append("대상 식당: ${restaurant?.name ?: "미선택"}")
+                    append("주문 식당: ${restaurant?.name ?: "미선택"}")
                     if (restaurant != null) {
                         // The user's own past ratings here, for comparison only.
                         val tally = Recommender(catalog).restaurantTally(state, restaurant)
@@ -523,10 +586,34 @@ class MainActivity : Activity() {
                     }
                     append("\n")
                     append("배달지: ${catalog.deliveryAlias}\n")
-                    append("network: ${networkLabel(state)}\n")
+                    append("network: ${networkLabel(state)}")
+                },
+            ),
+        )
+    }
+
+    /**
+     * The run's verification identifiers, folded away. A judge or the probe
+     * narrative needs them; a person ordering dinner does not.
+     */
+    private fun renderDiagnostics(state: ProductionState) {
+        content.addView(Ui.divider(this))
+        content.addView(
+            Ui.button(this, if (showDiagnostics) "검증 정보 접기" else "검증 정보 펼치기 (심사용)") {
+                showDiagnostics = !showDiagnostics
+                render()
+            },
+        )
+        if (!showDiagnostics) return
+        content.addView(
+            Ui.mono(
+                this,
+                buildString {
+                    append("주문 session: ${state.sessionLabel.ifEmpty { "없음" }}\n")
                     append("실행 세대(process epoch): ${state.processEpoch}\n")
                     append("비교 arm: ${armLabel()}\n")
-                    append("마지막 판단: $lastDecision")
+                    append("마지막 판단: $lastDecision\n")
+                    append("합성 catalog snapshot: ${catalog.snapshotDigest.take(16)}")
                 },
             ),
         )
@@ -562,7 +649,7 @@ class MainActivity : Activity() {
         val renderedFieldIds = mutableSetOf<String>()
         lines.forEach { line ->
             val menuLabel = line.menuValueToken?.let(catalog::valueLabel) ?: "메뉴 미정"
-            content.addView(Ui.body(this, "· 항목 ${line.lineId} — $menuLabel"))
+            content.addView(Ui.body(this, "· 항목 ${line.lineId.removePrefix("l")} — $menuLabel"))
             line.slots.forEach slot@{ binding ->
                 val field = state.fields[AsprEngine.fieldIdFor(binding.lineSlotId)] ?: return@slot
                 renderedFieldIds += field.fieldId
@@ -578,8 +665,8 @@ class MainActivity : Activity() {
                             }
                         } + (
                             "이 항목 빼기" to {
-                                actQuiet { it.removeLine(restaurant, line.lineId) }
                                 chat += ChatLine("나:", "$menuLabel 빼기")
+                                actQuiet { it.removeLine(restaurant, line.lineId) }
                             }
                             ),
                     ),
@@ -608,8 +695,8 @@ class MainActivity : Activity() {
                         this,
                         sides.map { side ->
                             "${side.label} ${pricing.formatAmount(side.priceDelta)}" to {
-                                act { it.addLine(restaurant, side.token) }
                                 chat += ChatLine("나:", "사이드: ${side.label}")
+                                act { it.addLine(restaurant, side.token) }
                             }
                         },
                     ),
@@ -645,13 +732,8 @@ class MainActivity : Activity() {
                     "지금까지 필요한 확인·입력 ${state.resolutions.size}회",
             ),
         )
-        if (openQuestions.isEmpty() && state.fields.isNotEmpty()) {
-            content.addView(
-                Ui.button(this, "이대로 확인하고 가상 주문 기록", primary = true) {
-                    currentRestaurant()?.let { restaurant -> act { it.requestDecision(restaurant) } }
-                },
-            )
-        }
+        // The confirm button lives in the stage banner at the top, where the
+        // "next thing to do" line points at it.
     }
 
     /** A fixed walk of the four episodes, kept for the demo recording. */
@@ -797,9 +879,6 @@ class MainActivity : Activity() {
             Ui.button(this, "평가·내보내기") {
                 startActivity(Intent(this, ProbeConsoleActivity::class.java))
             },
-        )
-        content.addView(
-            Ui.mono(this, "합성 catalog snapshot ${catalog.snapshotDigest.take(16)}"),
         )
     }
 
