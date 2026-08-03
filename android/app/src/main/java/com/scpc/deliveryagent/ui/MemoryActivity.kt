@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
 import android.widget.LinearLayout
+import android.widget.Toast
 import com.scpc.deliveryagent.core.AsprEngine
 import com.scpc.deliveryagent.core.FactKind
 import com.scpc.deliveryagent.core.Relevance
@@ -31,6 +32,20 @@ class MemoryActivity : Activity() {
         super.onCreate(savedInstanceState)
         content = Ui.column(this)
         setContentView(Ui.scroller(this, content))
+        render()
+    }
+
+    /**
+     * Every mutating tap goes through here: a stale row or a double tap
+     * surfaces as a message, never as a crash, and the list re-renders from
+     * the state that actually resulted.
+     */
+    private fun guarded(block: (ProductSurface) -> Unit) {
+        try {
+            block(surface)
+        } catch (error: Exception) {
+            Toast.makeText(this, "처리하지 못했습니다: ${error.message}", Toast.LENGTH_LONG).show()
+        }
         render()
     }
 
@@ -158,12 +173,10 @@ class MemoryActivity : Activity() {
                         this,
                         listOf(
                             "이 범위 자동 적용 철회" to {
-                                surface.revokeAutoApplyScope(preference.scopeToken)
-                                render()
+                                guarded { it.revokeAutoApplyScope(preference.scopeToken) }
                             },
                             "이 취향 삭제" to {
-                                surface.deletePreference(preference.scopeToken)
-                                render()
+                                guarded { it.deletePreference(preference.scopeToken) }
                             },
                         ),
                     ),
@@ -187,8 +200,7 @@ class MemoryActivity : Activity() {
                 )
                 content.addView(
                     Ui.button(this, "이 평가와 배운 내용 삭제") {
-                        surface.deleteReview(record.reviewId)
-                        render()
+                        guarded { it.deleteReview(record.reviewId) }
                     },
                 )
             }
@@ -201,15 +213,13 @@ class MemoryActivity : Activity() {
             .forEach { slot ->
             content.addView(
                 Ui.button(this, "${slot.label} 자동 적용 권한 철회 (전역)") {
-                    surface.revokeAutoApply(slot)
-                    render()
+                    guarded { it.revokeAutoApply(slot) }
                 },
             )
         }
         content.addView(
             Ui.button(this, "요청 메모 삭제") {
-                surface.deleteRequestNote()
-                render()
+                guarded { it.deleteRequestNote() }
             },
         )
         content.addView(

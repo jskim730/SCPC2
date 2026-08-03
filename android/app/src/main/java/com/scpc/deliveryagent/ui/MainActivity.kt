@@ -85,6 +85,22 @@ class MainActivity : Activity() {
     private fun currentRestaurant(): RestaurantDefinition? =
         catalog.restaurant(surface.state().targetEntityId)
 
+    /**
+     * Screen-kept working state belongs to one order conversation. A new
+     * session must not inherit candidates, open scope questions or a half
+     * answered review from the previous one; the stored memory itself lives
+     * in the core and is untouched here.
+     */
+    private fun clearTransientScreenState() {
+        candidates = emptyList()
+        pendingScope = emptyList()
+        reviewRating = null
+        reviewOffers = emptyList()
+        reviewId = null
+        reviewNeedsTarget = false
+        reviewTargetToken = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         content = Ui.column(this)
@@ -155,16 +171,21 @@ class MainActivity : Activity() {
         scrollChatIntoView = true
         val pending = pendingScope
         pendingScope = emptyList()
-        pending.forEach { value ->
-            surface.remember(
-                restaurant = restaurant,
-                slot = catalog.slot(value.scopeToken),
-                value = value.valueToken,
-                stable = remember,
-            )
-        }
         chat += ChatLine("나:", if (remember) "앞으로도 기억해줘" else "이번 주문만")
+        // Only what actually stored is spoken about; a value gone stale since
+        // the question was asked becomes a message, not a crash or a claim.
         pending.forEach { value ->
+            try {
+                surface.remember(
+                    restaurant = restaurant,
+                    slot = catalog.slot(value.scopeToken),
+                    value = value.valueToken,
+                    stable = remember,
+                )
+            } catch (error: Exception) {
+                chat += ChatLine("에이전트:", "처리하지 못했습니다: ${error.message}")
+                return@forEach
+            }
             chat += ChatLine(
                 "에이전트:",
                 "${Particles.withObj(catalog.slot(value.scopeToken).label)} " +
@@ -303,6 +324,7 @@ class MainActivity : Activity() {
                 this,
                 catalog.restaurants.map { restaurant ->
                     restaurant.name to {
+                        clearTransientScreenState()
                         chat += ChatLine("에이전트:", "${restaurant.name}으로 새 주문을 시작했습니다.")
                         act { it.startNewOrder(restaurant) }
                     }
@@ -453,9 +475,17 @@ class MainActivity : Activity() {
                         surface.lines().mapNotNull { line ->
                             val menuToken = line.menuValueToken ?: return@mapNotNull null
                             catalog.valueLabel(menuToken) to {
-                                reviewOffers = surface.setReviewTarget(restaurant, id, menuToken)
-                                reviewTargetToken = menuToken
-                                reviewNeedsTarget = false
+                                try {
+                                    reviewOffers = surface.setReviewTarget(restaurant, id, menuToken)
+                                    reviewTargetToken = menuToken
+                                    reviewNeedsTarget = false
+                                } catch (error: Exception) {
+                                    Toast.makeText(
+                                        this,
+                                        "처리하지 못했습니다: ${error.message}",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
                                 render()
                             }
                         },
@@ -505,12 +535,20 @@ class MainActivity : Activity() {
                 content.addView(Ui.row(this, rating, record.text, learned))
                 content.addView(
                     Ui.button(this, "이 평가와 참고 내용 삭제") {
-                        surface.deleteReview(record.reviewId)
-                        if (reviewId == record.reviewId) {
-                            reviewId = null
-                            reviewOffers = emptyList()
+                        try {
+                            surface.deleteReview(record.reviewId)
+                            if (reviewId == record.reviewId) {
+                                reviewId = null
+                                reviewOffers = emptyList()
+                            }
+                            chat += ChatLine("에이전트:", "평가와 그 평가로 배운 내용을 지웠습니다.")
+                        } catch (error: Exception) {
+                            Toast.makeText(
+                                this,
+                                "처리하지 못했습니다: ${error.message}",
+                                Toast.LENGTH_LONG,
+                            ).show()
                         }
-                        chat += ChatLine("에이전트:", "평가와 그 평가로 배운 내용을 지웠습니다.")
                         render()
                     },
                 )
@@ -551,7 +589,6 @@ class MainActivity : Activity() {
     private fun acceptReviewOffer(offer: ReviewCandidate, level: PreferenceScopeLevel) {
         val id = reviewId ?: return
         val restaurant = currentRestaurant() ?: return
-        act { it.acceptFromReview(restaurant, id, offer, level) }
         reviewOffers = reviewOffers - offer
         chat += ChatLine("나:", scopeLevelLabel(level))
         chat += ChatLine(
@@ -560,11 +597,17 @@ class MainActivity : Activity() {
                 "${Particles.withInto(catalog.valueLabel(offer.impliesValue))} 저장했습니다 — " +
                 "${scopeLevelLabel(level)} 범위에서 다음 초안부터 적용합니다.",
         )
-        render()
+        act { it.acceptFromReview(restaurant, id, offer, level) }
     }
 
     private fun declineReviewOffer(offer: ReviewCandidate) {
-        surface.dismissFromReview(offer)
+        try {
+            surface.dismissFromReview(offer)
+        } catch (error: Exception) {
+            Toast.makeText(this, "처리하지 못했습니다: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+        // A stale offer leaves the screen either way; only the stored state
+        // speaks through the toast above.
         reviewOffers = reviewOffers - offer
         chat += ChatLine("나:", "저장하지 않음")
         chat += ChatLine("에이전트:", "기억하지 않겠습니다. 평가 기록만 남습니다.")
@@ -750,6 +793,7 @@ class MainActivity : Activity() {
         content.addView(Ui.section(this, "E1 — 첫 주문과 기억 허용범위 (${marahyang.name})"))
         content.addView(
             Ui.button(this, "${marahyang.name}에서 새 주문 시작") {
+                clearTransientScreenState()
                 act { it.startNewOrder(marahyang) }
             },
         )
@@ -780,6 +824,7 @@ class MainActivity : Activity() {
         content.addView(Ui.section(this, "E2 — 다른 식당, 같은 마라 유형 (${geumson.name})"))
         content.addView(
             Ui.button(this, "다음 주문 session · ${geumson.name}") {
+                clearTransientScreenState()
                 act { it.nextOrderSession(geumson) }
             },
         )
@@ -798,6 +843,7 @@ class MainActivity : Activity() {
         content.addView(Ui.section(this, "E3 — 예외·권한 철회·취향 정정"))
         content.addView(
             Ui.button(this, "다음 주문 session · ${geumson.name}") {
+                clearTransientScreenState()
                 act { it.nextOrderSession(geumson) }
             },
         )
@@ -818,6 +864,7 @@ class MainActivity : Activity() {
         content.addView(Ui.section(this, "E4 — 미제공 옵션·품절·부분복구 (${marahyang.name})"))
         content.addView(
             Ui.button(this, "다음 주문 session · ${marahyang.name}") {
+                clearTransientScreenState()
                 act { it.nextOrderSession(marahyang) }
             },
         )

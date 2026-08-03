@@ -13,7 +13,7 @@
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
 | 기기 실행 검증 | **미실행.** RAM 16 GB 노트북에서 수행 (개발 노트북은 에뮬레이터 불가) |
-| 미구현·보류 항목 | 알림 surface, 실제 network 감지, 진짜 multi-select, 전 식당 완주 검증 — 아래 전용 절 참조 |
+| 미구현·보류 항목 | 실제 network 감지, 진짜 multi-select — 아래 전용 절 참조 (알림: 선언 제거로 확정, 전 식당 완주: 검증 완료) |
 | 공식 Runner 13-step 완주 | **미실행.** release 서명 뒤 수행 |
 | release 서명 설정 | **배선 완료·검증됨.** keystore 생성만 남음 (8/4 노트북에서 1회) |
 | 제출물 7종 | `APP.apk` 빌드 경로만 확보. 문서 4종·`SAMPLE_EXPORT`·영상 미착수 |
@@ -361,14 +361,12 @@ freeze 전에 JVM에서 재현 가능한 것은 전부 JVM 테스트로 내려�
 
 ### A. 지금 이 저장소에서 (기기 불필요)
 
-0. **freeze 전 최우선 — 남은 2건** — 근거와 방향은 아래 "미구현 사항과 추후 구현 방향" 참조:
-   알림 권한 선언 정리(붙이거나 지우거나), UI 크래시 경로 전수 확인.
-   (완료: 모든 식당 주문 완주 테스트 `AllRestaurantsCompletionTest` — 2026-08-03)
+0. **freeze 전 최우선 3건 — 전부 완료 (2026-08-03).** 모든 식당 주문 완주 테스트
+   `AllRestaurantsCompletionTest`, 알림 권한 선언 제거, UI 크래시 경로 전수 확인·차단.
 1. **제출 문서 초안 3종** — `MISSION_AND_TECHNICAL_NOTE`, `INSTALL_AND_USE_GUIDE`,
    `BUILD_AND_SUBMISSION_INFO`. 위 "핵심 설계 결정"이 기술노트의 뼈대다.
 2. 파서 어휘 확장 — 데모에서 쓸 문장을 먼저 확정하고 그 표현을 확실히 커버한다. 대본 버튼의 문장은
    현재 어휘로 전부 커버됨을 JVM 테스트가 아니라 육안으로도 한 번 확인한다.
-3. notification surface (선택) — mobile constraint는 알림 없이도 성립하지만 데모에 좋다.
 
 (완료: MemoryActivity 리뷰·평점·범위별 취향 목록과 범위별 철회·삭제, release 서명 배선 — 2026-07-31)
 
@@ -446,23 +444,19 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
 2026-07-31 기준으로 **의도적으로 넣지 않았거나 아직 확인하지 못한 것**을 근거와 함께 남긴다.
 "안 했다"와 "안 하기로 했다"를 구분하는 것이 목적이다.
 
-### 1. 알림 surface — 권한만 선언되어 있고 코드가 없다
+### 1. 알림 surface — 넣지 않기로 확정, 선언 제거 완료 (2026-08-03)
 
-`AndroidManifest.xml`이 `POST_NOTIFICATIONS`를 선언하지만 앱에 `NotificationManager`·
-`NotificationChannel`·런타임 권한 요청이 **한 줄도 없다**. 제출 Mission은 "알림 권한이 거부된
-경우에도 …미완료 주문을 완료로 오인하거나 중복 처리하지 않는다"를 mobile constraint의 한 축으로
-선언했다.
+(b)안으로 확정했다: `POST_NOTIFICATIONS` 선언을 manifest에서 지웠고, 앱은 어떤 선택 권한도
+선언하지 않는다. 지연 평가 요청은 app-local 정본에 정확히 한 번 기록되고 다음 실행의 in-app
+배너로 표시되므로, "알림 권한이 거부된 경우에도 미완료 주문을 완료로 오인하거나 중복 처리하지
+않는다"는 mobile constraint가 **부여·거부할 권한 자체가 없는 형태로** 성립한다.
 
-- **현재 상태의 성질:** permission-gated surface가 아예 없으므로 "outcome 연속성이 permission에
-  의존하지 않는다"는 주장 자체는 참이다. 다만 **심사관에게 보여줄 대비가 없다** — 권한을 거부해도
-  달라지는 게 없으니 시연이 성립하지 않는다.
-- **추후 방향 (택1):**
-  (a) 지연 평가 요청 도착 시 알림을 띄우되, 알림은 부수 surface로만 두고 in-app inbox와 다음 실행
-      banner를 정본으로 유지한다. `ProductSurface.pendingEvaluationRequest()`가 이미 있으므로
-      알림 발송만 얹으면 되고, 권한 거부 시 배너로만 표시되는 대비를 영상에 담을 수 있다.
-  (b) 알림을 넣지 않기로 확정하고 **선언을 지운다.** 쓰지 않는 권한을 선언한 채 두면 불필요한
-      질문을 부른다. 이 경우 기술노트에 "알림 없이도 constraint가 성립하도록 설계했다"를 명시한다.
-- 어느 쪽이든 **freeze 전에 정리해야 한다.** 선언과 구현이 어긋난 상태가 가장 나쁘다.
+- 선택 이유: freeze 당일 새 Android surface(`NotificationChannel`·API 33 런타임 권한 흐름)는
+  JVM으로 검증할 수 없는 크래시 표면을 늘리고, 알림은 배너가 이미 보여주는 것을 비추는 부수
+  표시일 뿐이다. 쓰지 않는 권한을 선언한 채 두면 검토에서 불필요한 질문을 부른다.
+- **기술노트에 명시할 것:** "권한 의존 surface를 두지 않아 outcome 연속성이 permission 상태와
+  무관하게 성립한다. 평가 요청의 정본은 ledger이고 표시는 in-app 배너다."
+- 본선 진출 뒤 (a)안(배너 정본 유지 + 부수 알림)으로 확장할 수 있다.
 
 ### 2. 실제 기기 network 감지 없음 — 합성 `SET_NETWORK`만
 
@@ -501,16 +495,19 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
   값 하나라는 계약을 유지한 채 토핑마다 slot을 두는 현재 방식을 유지하는 편이 core를 단순하게 둔다.
   UI에서만 여러 토핑 chip을 한 줄로 묶어 보여주는 것으로 체감을 개선할 수 있다.
 
-### 5. 심사관 자유 탐색 시 크래시 경로 미조사
+### 5. 심사관 자유 탐색 시 크래시 경로 — 전수 확인·차단 완료 (2026-08-03)
 
-`ProductSurface`의 `require(...)`가 던지는 예외를 UI가 어디까지 감싸는지 전수 조사하지 않았다.
-`MainActivity.act`/`actQuiet`는 `Exception`을 잡아 Toast로 처리하지만, 모든 호출부가 그 안에 있는지
-확인하지 못했다. 대본 버튼을 순서 없이 누르는 경우(예: E4 품절 event를 다른 식당에서 누르기),
-`reviewOffers`·`candidates`·`pendingScope` 같은 화면 보관 상태가 낡은 채 눌리는 경우도 미확인이다.
+`ui/`의 `surface.` 호출 전수를 분류했다. 읽기 호출을 제외하고 `act`/`actQuiet`/try-catch 밖에서
+상태를 변경하던 호출 9곳을 전부 감쌌다: MainActivity 4곳(`answerScope`의 `remember` 루프,
+리뷰 대상 선택 `setReviewTarget`, 리뷰 삭제, `dismissFromReview`)과 MemoryActivity 5곳(범위별
+철회·삭제·전역 철회·메모 삭제 — 공통 `guarded` 헬퍼 경유). 낡은 항목·중복 탭은 크래시 대신
+Toast가 되고, `answerScope`는 **실제로 저장된 값만** 대화에 말한다(G3 정직성).
 
-- **추후 방향:** `ui/` 안의 모든 `surface.` 호출부가 `act`/`actQuiet`/try-catch 안에 있는지 grep으로
-  훑고, 아닌 곳을 감싼다. 그다음 낡은 상태로 누르는 경로에 대해 화면 보관 필드를 session 전환 시
-  비우는 규칙을 넣는다.
+낡은 화면 상태 경로도 닫았다: `clearTransientScreenState()`가 후보·재사용 범위 질문·리뷰 진행
+상태 7필드를 비우며, 식당 선택 chip과 대본의 새 주문/다음 session 버튼 5곳 모두 session 전환
+시 호출한다. 이전 식당의 추천을 새 식당에서 누르거나 반쯤 답한 리뷰 범위가 다음 session의
+render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core에 있으므로 이 초기화의 영향을 받지
+않는다.
 
 ### 6. 기기에서만 가능한 검증 (위 "남은 작업 B" 전체)
 
@@ -570,3 +567,5 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
 | 2026-07-31 | 화면 검토(`DemoScriptTranscriptTest`)로 찾은 결함 5건 수정: (1) **조건이 안정 취향으로 저장되던 버그** — "앞으로도"가 문장 전체에 걸려 예산·음식 성격까지 STABLE이 되어 며칠 뒤 주문에 말한 적 없는 예산이 자동 적용됐다. `USER_CONDITION` slot은 문장 scope와 무관하게 절대 stable로 저장하지 않는다(UX_SPEC E1의 "예산과 음식 성격은 현재 주문 session에서만 사용" 계약과 코드가 어긋나 있었다). (2) 총액 행이 내부 digest(`total.<hash>`)를 그대로 보여주던 것을 금액 표시로 교체(`displayValue`). (3) 확인 완료 행이 "확인 완료 · 확인 완료"로 중복 출력되던 것 정리(`statusLine`). (4) 같은 trait가 "오늘 입력"과 "직접 저장"으로 두 번 계산·표시되던 추천 근거 dedupe. (5) 조사 오류("맵기을 순한맛로") — 라벨에서 받침을 보고 을/를·으로/로를 고르는 `Particles` 도입. `setLineOption`이 해당 항목에 없는 slot을 받아 중복 행을 만들 수 있던 구멍도 함께 막음. JVM 131개 통과 |
 | 2026-08-03 | 전 식당 완주 검증(freeze 전 최우선 1/3): `AllRestaurantsCompletionTest` 2개 신설 — 6식당 × main 메뉴 단독 12조합과 식당별 전체 메뉴 6조합을 화면과 같은 답변 루프로 완주, 전부 `ACT` 도달·결함 0건. JVM 144개 통과 |
 | 2026-08-03 | 기기 육안 테스트 피드백 반영 — 표시 전용, 판단 로직·probe 경로 무변경: ① "현재 상황"의 내부 정보(주문 session·process epoch·비교 arm·마지막 판단·catalog digest)를 하단 접이식 "검증 정보 (심사용)"로 이동 ② 내부 line ID 노출 제거(`항목 l1` → `항목 1`, `slotLabel` 포함) ③ 상단 "지금 단계" 배너(식당→메뉴→옵션 확인→확정→평가)와 "다음 할 일" 한 줄 추가, 주문 확정 버튼을 초안 하단에서 배너로 이동 ④ 대화형 액션(문장 전송·질문 답·재사용 범위 답) 후 대화 위치로 자동 스크롤 ⑤ 여러 버튼 핸들러가 `act()` 재렌더 **뒤에** chat을 추가해 방금 행동의 피드백이 다음 상호작용까지 화면에 안 보이던 표시 버그 수정. JVM 144개 통과 |
+| 2026-08-03 | 알림 (b)안 확정(freeze 전 최우선 2/3): `POST_NOTIFICATIONS` 선언 제거 — 앱은 선택 권한을 하나도 선언하지 않고, 지연 평가 요청은 ledger 정본 + in-app 배너로 성립. 선언·구현 불일치 해소, 기술노트 서술 지침을 미구현 절 1에 기록 |
+| 2026-08-03 | UI 크래시 경로 전수 차단(freeze 전 최우선 3/3): `act`/try-catch 밖 변경 호출 9곳(Main 4·Memory 5, 공통 `guarded` 헬퍼) 감싸기 — 낡은 항목·중복 탭이 크래시 대신 Toast. `answerScope`는 실제 저장된 값만 대화에 말함. `clearTransientScreenState()`로 session 전환 5곳(식당 chip·대본 버튼)에서 후보·범위 질문·리뷰 진행 상태 초기화. JVM 144개 통과 |
