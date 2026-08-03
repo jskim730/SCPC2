@@ -268,7 +268,13 @@ object Ui {
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(context, 12), dp(context, 10), dp(context, 12), dp(context, 10))
-        setBackgroundColor(Color.parseColor("#11000000"))
+        // A proposal is a card in the thread, drawn like the draft card so the
+        // two read as the same kind of thing the agent hands over.
+        background = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = dp(context, 14).toFloat()
+            setStroke(dp(context, 1), Color.parseColor("#D0D0D0"))
+        }
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,

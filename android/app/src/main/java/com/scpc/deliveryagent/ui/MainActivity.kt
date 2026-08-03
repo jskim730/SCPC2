@@ -411,11 +411,27 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * What the agent proposes right now.
+     *
+     * Until a dish is in the draft there is always something to propose, so the
+     * candidates stand on their own rather than waiting for a sentence the
+     * parser happened to understand. Saying more only re-ranks them: a person
+     * who picks a restaurant and says nothing still sees the menu, and one whose
+     * words were not understood is never left with a dead end.
+     */
     private fun renderCandidates() {
-        if (candidates.isEmpty()) return
         val restaurant = currentRestaurant() ?: return
+        val shown = candidates.ifEmpty {
+            if (surface.lines().isEmpty()) {
+                Recommender(catalog).candidates(surface.state(), restaurant)
+            } else {
+                emptyList()
+            }
+        }
+        if (shown.isEmpty()) return
         content.addView(Ui.chatLine(this, "에이전트:", "이런 메뉴는 어떠세요?"))
-        candidates.forEach { candidate ->
+        shown.forEach { candidate ->
             content.addView(
                 Ui.candidateCard(
                     context = this,
