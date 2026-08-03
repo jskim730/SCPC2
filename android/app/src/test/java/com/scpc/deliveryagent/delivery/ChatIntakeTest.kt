@@ -281,6 +281,35 @@ class ChatIntakeTest {
     }
 
     @Test
+    fun `stating conditions is itself a request for candidates`() {
+        val surface = surface()
+        surface.startNewOrder(daon)
+
+        // No menu is chosen yet, so saying what tonight should be like is
+        // answered with candidates. The declared product recommends from the
+        // stated conditions; it does not wait to be asked by the word 추천.
+        val opening = surface.say(daon, "2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘")
+        assertTrue(
+            "conditions alone bring candidates",
+            opening.recommendations.isNotEmpty(),
+        )
+        assertEquals("menu.daon.clear", opening.recommendations.first().valueToken)
+
+        // Once a menu is in the draft the conversation is about that order, so
+        // an option instruction does not push a fresh menu list at the user.
+        surface.addLine(daon, "menu.daon.clear")
+        val afterMenu = surface.say(daon, "밥은 적게 주세요")
+        assertTrue(
+            "an instruction about the chosen dish is not a menu search",
+            afterMenu.recommendations.isEmpty(),
+        )
+        assertTrue(
+            "asking by name still works at any point",
+            surface.say(daon, "추천해줘").recommendations.isNotEmpty(),
+        )
+    }
+
+    @Test
     fun `a candidate the current conditions rule out says why`() {
         val surface = surface()
         surface.startNewOrder(ongi)

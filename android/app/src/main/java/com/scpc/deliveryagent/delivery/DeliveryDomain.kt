@@ -318,11 +318,20 @@ class ProductSurface(
             Intent.CONFIRM_ORDER in utterance.intents
         val decision = if (wantsDecision) requestDecision(restaurant) else null
 
+        // Stating what you want is itself a request for candidates while no menu
+        // has been chosen: the declared product answers conditions with
+        // restaurant and menu candidates, and demanding the word "추천" first
+        // left "2만원 이하로 따뜻한 국물" - the app's own example - with nothing
+        // to show. Once a menu is in the draft the conversation is about that
+        // order, so candidates only return when they are asked for by name.
+        val wantsCandidates = Intent.RECOMMEND in utterance.intents ||
+            (state().draftLines.isEmpty() && applied.isNotEmpty())
+
         return ChatTurn(
             utterance = utterance,
             applied = applied,
             questions = questions,
-            recommendations = if (Intent.RECOMMEND in utterance.intents) {
+            recommendations = if (wantsCandidates) {
                 Recommender(catalog).candidates(state(), restaurant)
             } else {
                 emptyList()

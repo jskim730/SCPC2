@@ -9,7 +9,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| JVM 단위 테스트 | **149개 전부 통과** (debug·release 각각, emulator 불필요) |
+| JVM 단위 테스트 | **150개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
 | 기기 실행 검증 | **미실행.** SDK·API 35 image·WHPX 사용 가능 확인. 8/3 실기기(공기계)에 debug APK 수동 설치로 UI 육안 확인 시작 |
@@ -311,7 +311,7 @@ slot을 제공할 때만 식당을 넘는다.
 품절·가격변경은 코드 분기가 아니라 `catalog_events`다. `ProductSurface.applyCatalogEvent`가 그 slot
 하나에만 더 높은 authority로 전달하므로 본 메뉴와 독립 option은 보존된다.
 
-## 검증 — JVM 149개, emulator 불필요
+## 검증 — JVM 150개, emulator 불필요
 
 | 파일 | 개수 | 내용 |
 |---|---:|---|
@@ -320,7 +320,7 @@ slot을 제공할 때만 식당을 넘는다.
 | `core/ClaimOffComparisonTest.kt` | 6 | VIL paired 비교, guardrail 0 위반, arm state 완전 격리 |
 | `delivery/SyntheticCatalogTest.kt` | 10 | shipped asset byte로 불변조건 검사, menu type·line slot authoring, digest 결정성, 개인정보 유사 label 부재, 잘못된 catalog 거부 |
 | `delivery/ProductFlowProbeTest.kt` | 7 | 제품 기준 E1–E4 완주, 가격·예상시간, 항목 단위 품절 부분복구, 예산 초과 `ABSTAIN`, 재시작 연속성 |
-| `delivery/ChatIntakeTest.kt` | 18 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성 |
+| `delivery/ChatIntakeTest.kt` | 19 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성, **조건 발화 자체가 후보 요청** |
 | `delivery/MultiLineDraftTest.kt` | 10 | 두 메뉴 두 line, 같은 메뉴 옵션 분리, line 지시 우선, 수량·총액, 항목 제거·부활 차단, line ID 불재사용, 단일 commit, 항목 단위 품절, product step digest 연속성 |
 | `delivery/ScopedPreferenceTest.kt` | 9 | override > 유형 > 전역 우선순위, authored type만 식당 간 전달, stable slot 제한, 범위별 철회·삭제·정정 독립, 범위 표시 |
 | `delivery/ReviewMemoryTest.kt` | 20 | 리뷰 읽기, 동의 전 무변경, 범위 선택지 제한, scoped 승격·같은 쌍만 적용·유형 전달, review version 소유권, 최신 직접 지시·정정 보존, 독립 outcome 격리, 평가 요청 원자적 예약·도착·만료·응답 해소, 다중 항목 대상 확정 |
@@ -548,6 +548,7 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 | 2026-08-03 | 전 식당 완주 검증: 화면과 같은 답변 루프로 6식당 × main 메뉴 단독과 식당별 전체 메뉴를 완주, 전부 `ACT` 도달·결함 0건. 8/1의 `AllRestaurantCompletionTest`와 병합하며 **전체 메뉴 장바구니 경로**만 그 파일에 남기고 중복 파일은 삭제 |
 | 2026-08-03 | 기기 육안 테스트 피드백 반영 — 표시 전용, 판단 로직·probe 경로 무변경: ① "현재 상황"의 내부 정보(주문 session·process epoch·비교 arm·마지막 판단·catalog digest)를 하단 접이식 "검증 정보 (심사용)"로 이동 ② 내부 line ID 노출 제거(`항목 l1` → `항목 1`, `slotLabel` 포함) ③ 상단 "지금 단계" 배너(식당→메뉴→옵션 확인→확정→평가)와 "다음 할 일" 한 줄 추가, 주문 확정 버튼을 초안 하단에서 배너로 이동 ④ 대화형 액션(문장 전송·질문 답·재사용 범위 답) 후 대화 위치로 자동 스크롤 ⑤ 여러 버튼 핸들러가 `act()` 재렌더 **뒤에** chat을 추가해 방금 행동의 피드백이 다음 상호작용까지 화면에 안 보이던 표시 버그 수정. JVM 144개 통과 |
 | 2026-08-03 | 알림: 8/3 작업이 낡은 7/31 기반 위에서 진행되어 "구현이 없다"는 전제로 `POST_NOTIFICATIONS` 선언을 지웠으나, 8/1 커밋에 이미 `EvaluationNotification` 구현이 있었다. 병합 시 **선언을 되살려** (a)안(ledger 정본 + 배너, 알림은 부수 표시)으로 통일 |
+| 2026-08-03 | 기기 확인에서 나온 결함 1건 수정 — **조건만 말하면 추천 후보가 뜨지 않았다.** `say()`가 `Intent.RECOMMEND`(문장에 "추천"·"골라줘"·"뭐 먹을까")가 있을 때만 후보를 돌려줘서, 입력창 예시이자 설치가이드 첫 문장인 `2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘`로는 후보가 0개였다. 제출 Mission은 "대화로 원하는 음식과 현재 조건을 입력하면 앱은 적합한 식당·메뉴 후보를 추천한다"이므로 선언과 구현이 어긋나 있었다. **초안에 메뉴가 없고 이번 발화에서 이해한 값이 있으면** 후보를 제시하도록 고쳤다(메뉴를 담은 뒤에는 그 주문에 대한 대화이므로 이름으로 요청할 때만). `ChatIntakeTest`에 회귀 테스트 추가. JVM 150개 통과 |
 | 2026-08-03 | **화면을 직접 보고** 고친 레이아웃 결함 5건: `Ui.kt`의 실제 dp·색·순서를 그대로 옮긴 360dp 복제본을 브라우저로 렌더해 스크린샷으로 검토했다(기기·에뮬레이터 없이 레이아웃을 확인하는 수단, `app/build/uireview/`는 비커밋). 찾은 것 — ① 주문서 행 라벨이 `항목 1 · 떡 종/류`로 깨짐(항목 헤더가 이미 있는데 접두사를 반복) → 행에서는 base slot 라벨만 표시 ② 값이 `11,000/원`으로 잘림 → 값 칸 weight 4→5, 출처 문구를 12sp 아랫줄로 분리해 한 줄에 들어오게 함 ③ `이 항목 빼기`가 4등분 칩에서 `이 항목 빼/기`로 깨짐 → 수량 칩과 행 분리 ④ 단계 배너가 mono 12sp라 본문에 묻힘 → 연초록 배경 블록(`Ui.banner`)으로 분리 ⑤ 같은 화자 연속 말풍선마다 이름 반복 → 메신저처럼 한 번만(접근성은 `contentDescription`이 매 말풍선 유지). 상단 면책 문구도 2줄로 축약. JVM 149개 통과 |
 | 2026-08-03 | 앱에서 E1–E4 대본 제거(약 110줄)와 조작 재배치. 각본은 "준비된 happy path만 되는 앱"으로 읽힐 소지가 있고 심사관은 설치가이드를 보고 직접 입력하면 된다. 다만 조사 결과 `advanceTime`·`applyCatalogEvent`·`nextOrderSession`·`correctPreference`가 **대본 블록에서만** 호출되고 있어(식당 chip은 주문이 열려 있으면 숨고 `resetEverything`은 UI 미연결) 통째로 지우면 E2–E4와 지연 outcome 시연이 기기에서 불가능해진다. 그래서 각본 문장 버튼만 지우고 조작은 성격대로 나눴다: **새 주문 시작**은 주문 확정 후 뜨는 제품 UI(`renderNextOrder`), **취향 값 정정**은 `내 취향과 기억`의 철회·삭제 옆으로, **시간 경과·재고 변화**는 network·process 종료와 함께 **"합성 환경 조작 (시연·검증용)"** 패널로 통합. 품절 버튼은 하드코딩 대신 `catalog.eventsFor(현재 식당)`로 authored event를 나열한다. E1–E4 문장은 `INSTALL_AND_USE_GUIDE.md`로 옮겼다. JVM 149개 통과 |
 | 2026-08-03 | 주문서를 대화 속 카드로: `Ui.card`·`Ui.editableRow` 추가, 초안의 모든 행에 **변경** 버튼을 붙여 그 자리에서 이 식당이 제공하는 값 chip을 열고 고르게 했다(빈칸 채우기와 값 수정이 같은 동작). "이대로 주문하기" 버튼을 카드 안으로 옮겨 상단 배너와 중복 제거 |
