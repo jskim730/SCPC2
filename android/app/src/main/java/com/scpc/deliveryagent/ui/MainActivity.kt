@@ -350,7 +350,7 @@ class MainActivity : Activity() {
     /** Every synthetic restaurant, offered whenever no order is open yet. */
     private fun renderRestaurantChoice() {
         if (currentRestaurant() != null) return
-        content.addView(Ui.section(this, "식당 선택"))
+        content.addView(Ui.chatLine(this, "에이전트:", "어느 식당에서 주문할까요?"))
         content.addView(
             Ui.chipRow(
                 this,
@@ -382,8 +382,10 @@ class MainActivity : Activity() {
 
     private fun renderQuestions(state: ProductionState) {
         val restaurant = currentRestaurant() ?: return
+        // The agent's open questions are turns in the conversation, so they are
+        // spoken in a bubble and answered by the chips right under them.
         if (pendingScope.isNotEmpty()) {
-            content.addView(Ui.section(this, "이 값을 다음에도 쓸까요?"))
+            content.addView(Ui.chatLine(this, "에이전트:", "이 값을 다음 주문에도 쓸까요?"))
             content.addView(
                 Ui.chipRow(
                     this,
@@ -395,14 +397,17 @@ class MainActivity : Activity() {
             )
         }
         if (openQuestions.isEmpty()) return
-        content.addView(Ui.section(this, "확인이 필요한 항목"))
         openQuestions.forEach { fieldId ->
             val field = state.fields[fieldId] ?: return@forEach
             val slot = catalog.slotOfFieldSlotId(field.slotId)
                 ?: catalog.baseSlotOfLineSlotId(field.slotId)
                 ?: return@forEach
             content.addView(
-                Ui.body(this, "${Particles.withObj(catalog.slotLabel(field.slotId))} 정해 주세요."),
+                Ui.chatLine(
+                    this,
+                    "에이전트:",
+                    "${Particles.withObj(catalog.slotLabel(field.slotId))} 정해 주세요.",
+                ),
             )
             val choices = catalog.valuesFor(restaurant, slot.scopeToken)
                 .filter { it.inStock }
@@ -421,7 +426,7 @@ class MainActivity : Activity() {
     private fun renderCandidates() {
         if (candidates.isEmpty()) return
         val restaurant = currentRestaurant() ?: return
-        content.addView(Ui.section(this, "추천 후보"))
+        content.addView(Ui.chatLine(this, "에이전트:", "이런 메뉴는 어떠세요?"))
         candidates.forEach { candidate ->
             content.addView(
                 Ui.candidateCard(
@@ -1047,6 +1052,7 @@ class MainActivity : Activity() {
     }
 
     private companion object {
-        const val MAX_CHAT_LINES = 12
+        // A thread the user scrolls, not a status box, so it keeps more turns.
+        const val MAX_CHAT_LINES = 40
     }
 }

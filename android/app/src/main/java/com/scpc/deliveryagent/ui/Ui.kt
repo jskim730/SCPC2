@@ -3,6 +3,7 @@ package com.scpc.deliveryagent.ui
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.inputmethod.EditorInfo
@@ -174,13 +175,57 @@ object Ui {
         }
     }
 
-    /** One turn of the conversation. The speaker is spelled out, not implied by colour. */
-    fun chatLine(context: Context, speaker: String, text: String): TextView =
-        TextView(context).apply {
-            this.text = "$speaker  $text"
-            textSize = 14f
-            setPadding(0, dp(context, 4), 0, dp(context, 4))
+    /**
+     * One turn of the conversation, drawn as a chat bubble.
+     *
+     * The speaker is carried three ways that do not depend on colour: the side
+     * the bubble sits on, the name written above the agent's bubbles, and the
+     * spoken description of the whole bubble, which always begins with the
+     * speaker so a screen reader announces who said it.
+     */
+    fun chatLine(context: Context, speaker: String, text: String): LinearLayout {
+        val mine = speaker.startsWith("나")
+        val radius = dp(context, 16).toFloat()
+        val tail = dp(context, 4).toFloat()
+        val bubble = TextView(context).apply {
+            this.text = text
+            textSize = 15f
+            setTextColor(if (mine) Color.WHITE else Color.parseColor("#111111"))
+            setPadding(dp(context, 14), dp(context, 10), dp(context, 14), dp(context, 10))
+            maxWidth = (context.resources.displayMetrics.widthPixels * 0.78f).toInt()
+            background = GradientDrawable().apply {
+                setColor(
+                    if (mine) Color.parseColor("#173F35") else Color.parseColor("#ECECEC"),
+                )
+                cornerRadii = if (mine) {
+                    // The corner nearest the speaker is the blunt one.
+                    floatArrayOf(radius, radius, tail, tail, radius, radius, radius, radius)
+                } else {
+                    floatArrayOf(tail, tail, radius, radius, radius, radius, radius, radius)
+                }
+            }
+            contentDescription = "$speaker $text"
         }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = if (mine) Gravity.END else Gravity.START
+            setPadding(0, dp(context, 3), 0, dp(context, 3))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            if (!mine) {
+                addView(
+                    TextView(context).apply {
+                        this.text = speaker.trimEnd(':', ' ')
+                        textSize = 12f
+                        setPadding(dp(context, 4), 0, 0, dp(context, 2))
+                    },
+                )
+            }
+            addView(bubble)
+        }
+    }
 
     /** Small wrapping row of tap targets for answering one question. */
     fun chipRow(context: Context, choices: List<Pair<String, () -> Unit>>): LinearLayout =
