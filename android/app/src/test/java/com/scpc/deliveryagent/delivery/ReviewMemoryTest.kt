@@ -42,13 +42,13 @@ class ReviewMemoryTest {
         state().fields[LineTokens.optionFieldId(lineId, base)]
 
     /** Completes one single-menu order at 다온 so there is something to review. */
-    private fun placeOrder(surface: ProductSurface) {
+    private fun placeOrder(surface: ProductSurface): com.scpc.deliveryagent.core.StepOutcome {
         surface.startNewOrder(daon)
         surface.say(daon, "2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘")
         surface.addLine(daon, "menu.daon.clear")
         surface.say(daon, "앞으로도 수저 빼고 밥은 보통으로")
         surface.remember(daon, catalog.slot(Slots.SALTINESS), "salt.normal", stable = false)
-        surface.requestDecision(daon)
+        return surface.requestDecision(daon)
     }
 
     // -------------------------------------------------------------- reading
@@ -186,6 +186,28 @@ class ReviewMemoryTest {
             listOf(learned.factId),
             surface.reviews().single().derivedFactIds,
         )
+        assertEquals(turn.reviewId, learned.originReviewId)
+    }
+
+    @Test
+    fun `review approval and ownership link share one evidence boundary`() {
+        val surface = surface()
+        placeOrder(surface)
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+
+        val outcome = surface.acceptFromReview(
+            daon,
+            turn.reviewId,
+            turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
+
+        assertTrue(surface.reviews().single().derivedFactIds.isNotEmpty())
+        assertEquals(
+            "the result includes both the fact and its review ownership link",
+            surface.state().digest(),
+            outcome.result.getString("state_after_sha256"),
+        )
     }
 
     @Test
@@ -271,6 +293,99 @@ class ReviewMemoryTest {
     }
 
     @Test
+    fun `deleting an old review preserves a newer direct instruction at the same scope`() {
+        val surface = surface()
+        placeOrder(surface)
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+        surface.acceptFromReview(
+            daon,
+            turn.reviewId,
+            turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
+
+        // The same deterministic fact address now holds a newer instruction the
+        // user stated independently of the review.
+        surface.rememberForMenu(
+            daon,
+            catalog.slot(Slots.SALTINESS),
+            "salt.normal",
+            "menu.daon.clear",
+        )
+        val current = surface.state().facts.values.single {
+            it.scopeMenuId == "menu.daon.clear" && it.kind == FactKind.STABLE
+        }
+        assertEquals("salt.normal", current.value)
+        assertNull(current.originReviewId)
+
+        surface.deleteReview(turn.reviewId)
+
+        assertTrue(surface.reviews().isEmpty())
+        assertTrue(
+            "the current direct instruction is not owned by the deleted review",
+            surface.state().facts.values.any {
+                it.factId == current.factId && it.value == "salt.normal" &&
+                    it.originReviewId == null
+            },
+        )
+    }
+
+    @Test
+    fun `deleting a review preserves a newer correction of its scoped preference`() {
+        val surface = surface()
+        placeOrder(surface)
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+        surface.acceptFromReview(
+            daon,
+            turn.reviewId,
+            turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
+        val scope = PreferenceScopes.menuOverride(
+            Slots.SALTINESS,
+            daon.entityToken,
+            "menu.daon.clear",
+        )
+
+        surface.correctPreference(scope, "salt.normal")
+        surface.deleteReview(turn.reviewId)
+
+        assertTrue(
+            "the corrected current-authority value survives its source review",
+            surface.state().facts.values.any {
+                it.scopeMenuId == "menu.daon.clear" && it.value == "salt.normal" &&
+                    it.originReviewId == null
+            },
+        )
+    }
+
+    @Test
+    fun `deleting a review does not delete an independent outcome with the same value`() {
+        val surface = surface()
+        placeOrder(surface)
+        surface.scheduleOutcome(catalog.slot(Slots.SALTINESS), "salt.light")
+        surface.advanceTime()
+        val independentOutcome = surface.state().facts.values.single {
+            it.kind == FactKind.OUTCOME && it.value == "salt.light"
+        }
+        val turn = surface.submitReview(daon, "rating.ok", "간이 좀 셌어")
+        surface.acceptFromReview(
+            daon,
+            turn.reviewId,
+            turn.offers.single(),
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE,
+        )
+
+        surface.deleteReview(turn.reviewId)
+
+        assertTrue(
+            "equal value tokens do not imply shared ownership",
+            surface.state().facts[independentOutcome.factId]?.value == "salt.light",
+        )
+        assertTrue(surface.state().appliedOutcomes.containsKey("outcome.salt.light"))
+    }
+
+    @Test
     fun `a deleted review's memory is not restored by time or a restart`() {
         val store = InMemoryStateStore()
         val surface = surface(store)
@@ -308,8 +423,13 @@ class ReviewMemoryTest {
     fun `the rating request arrives exactly once and expires on its own`() {
         val store = InMemoryStateStore()
         val surface = surface(store)
-        placeOrder(surface)
+        val commit = placeOrder(surface)
         assertFalse("nothing arrived before time moves", surface.pendingEvaluationRequest())
+        assertEquals(
+            "commit and rating-request scheduling are one persisted transition",
+            surface.state().digest(),
+            commit.result.getString("state_after_sha256"),
+        )
 
         surface.advanceTime()
         assertTrue("the request arrived with virtual time", surface.pendingEvaluationRequest())

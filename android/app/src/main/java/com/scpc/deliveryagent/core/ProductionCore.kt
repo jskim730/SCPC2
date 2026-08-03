@@ -14,6 +14,27 @@ data class ProbeStep(
     val roles: JSONObject,
 )
 
+/** Product-authored catalog structure applied atomically with one core step. */
+data class DraftConfiguration(
+    val lines: List<DraftLineDecl>,
+    val requiredSlotIds: Set<String>,
+    val neverAutoApplySlotIds: Set<String>,
+    val unusableValues: Set<String>,
+)
+
+/** Product-evaluated money/time constraint applied atomically with a decision. */
+data class DraftConstraint(
+    val satisfied: Boolean,
+    val reason: String,
+)
+
+/** App-local delayed outcome scheduled atomically when a draft commits. */
+data class PostCommitOutcome(
+    val scopeToken: String,
+    val valuePrefix: String,
+    val expiresAtVirtual: String,
+)
+
 /** One structured evidence document that a step or the export produced. */
 data class EvidenceDoc(
     val evidenceId: String,
@@ -104,61 +125,39 @@ class ProductionCore(
     }
 
     /**
-     * Declares which option slots the current synthetic menu needs a value for.
+     * Applies product-authored order lines and option schema to the in-flight
+     * state of one operation.
      *
-     * Called by the product surface when the user moves to another restaurant.
-     * Probe input never declares an option schema, so this is product data, not a
-     * second decision path.
+     * This is catalog data, not a second decision path. Keeping it inside
+     * [execute] ensures a line add/remove and the result/evidence that reports it
+     * are one atomic persisted transition. Probe calls pass no configuration and
+     * retain the original one-field-per-slot behavior.
      */
-    fun declareOptionSchema(
-        slotIds: Collection<String>,
-        neverAutoApplySlotIds: Collection<String> = emptySet(),
-        unusableValues: Collection<String> = emptySet(),
+    private fun applyDraftConfiguration(
+        state: ProductionState,
+        configuration: DraftConfiguration,
+        stepId: String,
     ) {
-        val state = loadState()
-        reconcileProcess(state)
-        state.requiredSlots.clear()
-        state.requiredSlots.addAll(slotIds)
-        state.neverAutoApplySlots.clear()
-        state.neverAutoApplySlots.addAll(neverAutoApplySlotIds)
-        state.unusableValues.clear()
-        state.unusableValues.addAll(unusableValues)
-        AsprEngine.project(state, "option-schema")
-        store.save(state.encode())
-    }
-
-    /**
-     * Declares the order lines of the current draft together with the option
-     * schema.
-     *
-     * Like [declareOptionSchema] this is product data about the current synthetic
-     * menu, not a second decision path: which lines exist and which slots each
-     * line carries is what the user built on screen, and the engine still decides
-     * every value through the same selection, permission and dependency rules.
-     * Probe input declares no lines.
-     */
-    fun declareDraftStructure(
-        lines: List<DraftLineDecl>,
-        requiredSlotIds: Collection<String>,
-        neverAutoApplySlotIds: Collection<String> = emptySet(),
-        unusableValues: Collection<String> = emptySet(),
-    ) {
-        val state = loadState()
-        reconcileProcess(state)
         state.draftLines.clear()
-        state.draftLines.addAll(lines)
+        state.draftLines.addAll(configuration.lines)
         // Every slot that ever belonged to a declared line of this draft stays
         // registered, so a removed line's leftover facts can never re-surface as
         // an order-level field.
-        lines.forEach { line -> line.slots.forEach { state.lineSlotRegistry += it.lineSlotId } }
+        configuration.lines.forEach { line ->
+            line.slots.forEach { state.lineSlotRegistry += it.lineSlotId }
+        }
         state.requiredSlots.clear()
-        state.requiredSlots.addAll(requiredSlotIds)
+        state.requiredSlots.addAll(configuration.requiredSlotIds)
         state.neverAutoApplySlots.clear()
-        state.neverAutoApplySlots.addAll(neverAutoApplySlotIds)
+        state.neverAutoApplySlots.addAll(configuration.neverAutoApplySlotIds)
         state.unusableValues.clear()
-        state.unusableValues.addAll(unusableValues)
-        AsprEngine.project(state, "draft-structure")
-        store.save(state.encode())
+        state.unusableValues.addAll(configuration.unusableValues)
+        // A line/schema change invalidates the previous roll-up decision. The
+        // product recomputes money/time against this exact structure immediately
+        // before the next decision request.
+        state.constraintSatisfied = true
+        state.constraintReason = ""
+        AsprEngine.project(state, "$stepId-draft-structure")
     }
 
     /**
@@ -168,12 +167,35 @@ class ProductionCore(
      * the engine only refuses to act on a draft that breaks them. Probe input states
      * no such constraint, so this stays satisfied there.
      */
-    fun declareDraftConstraint(satisfied: Boolean, reason: String) {
-        val state = loadState()
-        reconcileProcess(state)
-        state.constraintSatisfied = satisfied
-        state.constraintReason = if (satisfied) "" else reason
-        store.save(state.encode())
+    private fun applyDraftConstraint(state: ProductionState, constraint: DraftConstraint) {
+        state.constraintSatisfied = constraint.satisfied
+        state.constraintReason = if (constraint.satisfied) "" else constraint.reason
+    }
+
+    private fun schedulePostCommitOutcome(
+        state: ProductionState,
+        action: ActionRecord,
+        configuration: PostCommitOutcome,
+        notes: JSONObject,
+    ) {
+        val value = "${configuration.valuePrefix}.${Ids.segment(action.actionId)}"
+        val outcomeId = Ids.state("outcome", value)
+        if (state.appliedOutcomes.containsKey(outcomeId) ||
+            state.pendingOutcomes.any { it.outcomeId == outcomeId }
+        ) {
+            return
+        }
+        state.pendingOutcomes += PendingOutcome(
+            outcomeId = outcomeId,
+            value = value,
+            slotId = Ids.state("slot", configuration.scopeToken),
+            scopeIds = listOf(AsprEngine.scopeIdFor(configuration.scopeToken)),
+            entityId = null,
+            scheduledAtVirtual = state.virtualNow,
+            seq = state.nextSeq(),
+            expiresAtVirtual = configuration.expiresAtVirtual,
+        )
+        notes.put("scheduled_outcome_id", outcomeId)
     }
 
     /**
@@ -184,10 +206,11 @@ class ProductionCore(
      * revocation or the deletion of some other fact leave the choice alone, while a
      * catalog change that makes the value unavailable still re-opens it.
      */
-    fun confirmUserChoice(slotIds: Collection<String>) {
-        val state = loadState()
-        reconcileProcess(state)
-        var changed = false
+    private fun confirmUserChoices(
+        state: ProductionState,
+        slotIds: Collection<String>,
+        stepId: String,
+    ) {
         slotIds.forEach { slotId ->
             val fieldId = AsprEngine.fieldIdFor(slotId)
             val field = state.fields[fieldId] ?: return@forEach
@@ -202,12 +225,10 @@ class ProductionCore(
             state.resolutions += Resolution(
                 fieldId = fieldId,
                 kind = "USER_CONFIRMATION",
-                stepId = "product-confirm",
+                stepId = stepId,
                 seq = state.nextSeq(),
             )
-            changed = true
         }
-        if (changed) store.save(state.encode())
     }
 
     /**
@@ -241,19 +262,22 @@ class ProductionCore(
         return reviewId
     }
 
-    /** Notes that a review is where one remembered value and fact came from. */
-    fun linkReviewMemory(reviewId: String, valueToken: String, factId: String? = null) {
-        val state = loadState()
-        reconcileProcess(state)
+    /** Links a fact version to its approving review inside the same state write. */
+    private fun linkReviewMemory(
+        state: ProductionState,
+        reviewId: String,
+        valueToken: String,
+        factId: String,
+    ) {
         val index = state.reviews.indexOfFirst { it.reviewId == reviewId }
-        if (index < 0) return
+        require(index >= 0) { "unknown source review $reviewId" }
         val review = state.reviews[index]
         val values = if (valueToken in review.derivedValueTokens) {
             review.derivedValueTokens
         } else {
             review.derivedValueTokens + valueToken
         }
-        val factIds = if (factId == null || factId in review.derivedFactIds) {
+        val factIds = if (factId in review.derivedFactIds) {
             review.derivedFactIds
         } else {
             review.derivedFactIds + factId
@@ -263,7 +287,6 @@ class ProductionCore(
             derivedValueTokens = values,
             derivedFactIds = factIds,
         )
-        store.save(state.encode())
     }
 
     /** Settles which menu a review was about. */
@@ -279,9 +302,9 @@ class ProductionCore(
     /**
      * Deletes a review and everything learned from it.
      *
-     * The text goes, the scheduled or already folded-in result goes, and the fields
-     * that depended on it are re-opened. Only a marker stays, so a later restart or
-     * a late event cannot bring the review or its memory back.
+     * The text and only the stable fact versions this review owns go, and fields
+     * that depended on those versions are re-opened. Independent delayed outcomes
+     * with the same value token are not owned by the review and stay intact.
      */
     fun deleteReview(reviewId: String) {
         val state = loadState()
@@ -315,16 +338,13 @@ class ProductionCore(
         // Exactly the scoped facts this review produced. A same-valued preference
         // the user stated independently keeps living under its own fact id.
         review.derivedFactIds.forEach { factId ->
-            state.facts[factId]?.let(::removeFactWithMarker)
-        }
-        review.derivedValueTokens.forEach { valueToken ->
-            val outcomeId = Ids.state("outcome", valueToken)
-            state.pendingOutcomes.removeAll { it.outcomeId == outcomeId }
-            state.appliedOutcomes.remove(outcomeId)
-            state.facts.values
-                .filter { it.kind == FactKind.OUTCOME && it.value == valueToken }
-                .toList()
-                .forEach(::removeFactWithMarker)
+            // The fact id is deterministic per scope and may now hold a newer
+            // direct instruction or another review's approval. An old review
+            // owns only the version it created, never whatever currently happens
+            // to live at the same address.
+            state.facts[factId]
+                ?.takeIf { it.originReviewId == reviewId }
+                ?.let(::removeFactWithMarker)
         }
         AsprEngine.project(state, "review-delete")
         store.save(state.encode())
@@ -337,7 +357,13 @@ class ProductionCore(
 
     // -------------------------------------------------------------- stepping
 
-    fun execute(step: ProbeStep): StepOutcome {
+    fun execute(
+        step: ProbeStep,
+        userConfirmedSlotIds: Collection<String> = emptySet(),
+        draftConfiguration: DraftConfiguration? = null,
+        draftConstraint: DraftConstraint? = null,
+        postCommitOutcome: PostCommitOutcome? = null,
+    ): StepOutcome {
         val state = loadState()
         // The digest of what was actually persisted, taken before this step changes
         // anything, so consecutive step results chain. Process reconciliation is an
@@ -378,9 +404,25 @@ class ProductionCore(
             notes.put("duplicate_step", true)
         } else {
             openSessionIfNeeded(state, step)
+            val configureAfterOperation = step.operation == Op.RESET_AND_START
+            if (!configureAfterOperation) draftConfiguration?.let {
+                applyDraftConfiguration(state, it, step.stepId)
+            }
+            draftConstraint?.let { applyDraftConstraint(state, it) }
             val applied = apply(state, step, view, notes)
             decision = if (decision == DecisionState.FAILED) decision else applied.first
             action = applied.second
+            if (configureAfterOperation) draftConfiguration?.let {
+                applyDraftConfiguration(state, it, step.stepId)
+            }
+            if (action != null && postCommitOutcome != null) {
+                schedulePostCommitOutcome(state, action, postCommitOutcome, notes)
+            }
+            // Product taps that choose a value are part of this same persisted
+            // operation. Applying the confirmation before snapshots, result
+            // digests and evidence are built keeps the returned state_after hash
+            // identical to what the next operation actually loads.
+            confirmUserChoices(state, userConfirmedSlotIds, step.stepId)
             state.events[step.eventId] = EventRecord(
                 eventId = step.eventId,
                 stepId = step.stepId,
@@ -585,6 +627,9 @@ class ProductionCore(
             value = newValue,
             authorityVersion = authority,
             source = FactSource.USER_CORRECTION,
+            // A current explicit correction supersedes the review version and
+            // is independently owned by the user from this point onward.
+            originReviewId = null,
             seq = state.nextSeq(),
         )
         AsprEngine.invalidateDescendants(
@@ -860,6 +905,11 @@ class ProductionCore(
         state.fields.clear()
         state.draftLines.clear()
         state.lineSlotRegistry.clear()
+        state.requiredSlots.clear()
+        state.neverAutoApplySlots.clear()
+        state.unusableValues.clear()
+        state.constraintSatisfied = true
+        state.constraintReason = ""
     }
 
     private fun updateContext(state: ProductionState, view: RoleView) {
@@ -915,6 +965,7 @@ class ProductionCore(
         val scopeSpecificity = view.value(RoleExt.SPECIFICITY)?.toIntOrNull() ?: 0
         val scopeMenuTypeId = view.value(RoleExt.MENU_TYPE_ID)
         val scopeMenuId = view.value(RoleExt.SCOPE_MENU_ID)
+        val sourceReviewId = view.value(RoleExt.SOURCE_REVIEW_ID)
         val stored = mutableListOf<String>()
         val rejected = mutableListOf<String>()
 
@@ -957,6 +1008,7 @@ class ProductionCore(
                 slotId = slotId,
                 value = value,
                 source = source,
+                originReviewId = sourceReviewId,
                 confidence = Confidence.EXPLICIT,
                 permission = permission,
                 lifetime = lifetime,
@@ -975,6 +1027,12 @@ class ProductionCore(
                 scopeMenuId = scopeMenuId,
             )
             stored += factId
+            if (sourceReviewId != null) {
+                require(kind == FactKind.STABLE) {
+                    "a review may create only explicit stable memory"
+                }
+                linkReviewMemory(state, sourceReviewId, value, factId)
+            }
         }
 
         view.value(Role.STABLE_VALUE)?.let { value ->
@@ -1052,6 +1110,7 @@ class ProductionCore(
             slotId = slotId,
             value = token,
             source = FactSource.DELAYED_OUTCOME,
+            originReviewId = null,
             confidence = Confidence.EXPLICIT,
             // An outcome changes ranking and the proposed option, never an
             // automatic application.

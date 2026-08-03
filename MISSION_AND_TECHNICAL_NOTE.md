@@ -180,7 +180,7 @@ VIL을 claim-off보다 낮추는 것이다. guardrail 위반 0이 전제이며, 
 | network `DELAYED`/`UNKNOWN` | 열린 확인이 있으면 질문은 network 없이 가능하므로 `ASK` 우선. 확인이 없으면 `WAIT` — 초안은 그대로 |
 | network `OFFLINE` | 유효한 cache가 있으면 `WAIT`, 없으면 `ABSTAIN`. 미확인 commit 없음 |
 | 예산·희망시간 위반 | `ABSTAIN` — 조건을 만족하는 안이 없음을 정직하게 표시하고 멈춘다 |
-| 알림 권한 | **선언된 선택 권한이 없다.** 평가 요청의 정본은 ledger이고 표시는 in-app 배너이므로, outcome 연속성이 permission 상태와 구조적으로 무관하다 (§9 참조) |
+| 알림 권한 거부 | 평가 요청의 정본은 ledger, 표시는 in-app 배너. 알림은 그 정본을 비추는 부수 surface이므로 거부돼도 주문 기록·평가 요청·복구가 그대로 유지되고 알림만 뜨지 않는다 (§9 참조) |
 | 품절 event | 영향 항목만 `NEEDS_CONFIRMATION`으로 재개방, 총액 재계산, 다른 항목·기억 보존 |
 
 ## 8. CORE-1…6이 이 Mission에서 나타나는 위치
@@ -202,9 +202,11 @@ VIL을 claim-off보다 낮추는 것이다. guardrail 위반 0이 전제이며, 
 처리하지 않는 것.**
 
 - **process death 대응**은 §7의 재조정으로 성립하고, 실제 kill 버튼으로 시연 가능하다.
-- **알림 권한 조건**은 설계로 성립한다: 앱은 선택 권한을 하나도 선언하지 않고, 평가 요청은
-  ledger 정본 + in-app 배너로 전달된다. 부여·거부할 권한이 없으므로 "거부된 경우"는 이 앱의
-  유일한 경우이며, 그 경우에 항상 옳게 동작함을 전 테스트가 확인한다.
+- **알림 권한 조건**은 surface 분리로 성립한다: 평가 요청의 **정본은 ledger**이고 화면 표시는
+  in-app 배너다. `EvaluationNotification`은 그 정본을 **비추기만** 하며 요청을 만들거나 진행시키지
+  않는다(`sync`는 멱등). 따라서 `POST_NOTIFICATIONS`가 거부돼도 주문 기록·평가 요청·복구는 그대로
+  동작하고, 달라지는 것은 알림이 뜨느냐뿐이다. 화면이 허용/거부 상태를 그대로 표시하므로 심사관이
+  권한을 거부한 채 같은 흐름을 완주하는 대비 시연이 가능하다.
 - **PC counterfactual.** 일반 PC 대화 환경에는 Android lifecycle(임의 시점 process 종료)과 알림
   권한의 경계가 없으므로 같은 복구 가치를 제공하거나 검증하기 어렵다. 이 제품의 가치 축인
   "중단 뒤 부분 복구"는 모바일에서만 실재하는 제약 위에 있다.
@@ -253,7 +255,7 @@ JVM 144개(에뮬레이터 불필요) + 기기 검증. 대표 매핑:
 | 다른 entity·goal의 기록은 서지 않는다 | V2 entity/goal 교환 |
 | 순서변형·반복·중간 Reset에도 결과 불변 | V3 (18-step) |
 | 26-step 장기 연결 | V4 |
-| 전 식당 × 전 메뉴가 확정까지 완주한다 | `AllRestaurantsCompletionTest` (6식당 × main 12조합 + 전체 메뉴 6조합) |
+| 전 식당 × 전 메뉴가 확정까지 완주한다 | `AllRestaurantCompletionTest` (6식당 × 재고 있는 모든 main 메뉴 + 식당별 전체 메뉴 장바구니) |
 | VIL paired 비교·guardrail 0 위반·arm 격리 | `ClaimOffComparisonTest` |
 | 리뷰 승인 전 무변경·범위별 저장·정확한 파생 삭제 | `ReviewMemoryTest` |
 | 항목 단위 품절 부분복구·단일 commit | `MultiLineDraftTest`, `ProductFlowProbeTest` |

@@ -2,17 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      No optional permission is declared. The delayed evaluation request is
-      committed to the app-local record of truth and surfaces as the in-app
-      banner, so the declared mobile constraint holds with nothing to grant
-      or deny. A notification would only mirror what the banner already shows.
+      Optional only. The synthetic E1-E4 path and the declared mobile constraint
+      must complete with every optional permission denied, so a delayed outcome is
+      committed to the app-local record of truth before any notification is shown.
+      EvaluationNotification mirrors that record and never creates or advances a
+      request, so denying this permission changes what is displayed and nothing else.
     -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ScpcAgent">
 

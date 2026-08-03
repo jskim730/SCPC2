@@ -48,6 +48,9 @@ object RoleExt {
      * a passing notice such as a request to rate the finished order.
      */
     const val EXPIRES_AT = "PRODUCT_EXPIRES_AT"
+
+    /** Review whose explicit approval created this stable fact, if any. */
+    const val SOURCE_REVIEW_ID = "PRODUCT_SOURCE_REVIEW_ID"
 }
 
 /**

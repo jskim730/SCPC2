@@ -9,17 +9,17 @@
 
 | 항목 | 상태 |
 |---|---|
-| JVM 단위 테스트 | **144개 전부 통과** (emulator 불필요) |
+| JVM 단위 테스트 | **149개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
-| 기기 실행 검증 | **미실행.** RAM 16 GB 노트북에서 수행 (개발 노트북은 에뮬레이터 불가) |
-| 미구현·보류 항목 | 실제 network 감지, 진짜 multi-select — 아래 전용 절 참조 (알림: 선언 제거로 확정, 전 식당 완주: 검증 완료) |
+| 기기 실행 검증 | **미실행.** SDK·API 35 image·WHPX 사용 가능 확인. 8/3 실기기(공기계)에 debug APK 수동 설치로 UI 육안 확인 시작 |
+| 미구현·보류 항목 | 실제 network 감지, 진짜 multi-select — 아래 전용 절 참조 |
 | 공식 Runner 13-step 완주 | **미실행.** release 서명 뒤 수행 |
 | release 서명 설정 | **배선 완료·검증됨.** keystore 생성만 남음 (8/4 노트북에서 1회) |
 | 제출물 7종 | `APP.apk` 빌드 경로만 확보. 문서 4종·`SAMPLE_EXPORT`·영상 미착수 |
-| Mission 선언 제출 | **제출 완료·사용자 동결.** 기준 파일 `SCPC2026_R2_MISSION_First_penguin.pdf`; Dacon의 `MISSION_LOCK.json` 수령 대기 |
+| Mission 선언 제출 | **제출·Dacon 동결 완료.** 공식 정본은 루트 `MISSION_LOCK.json` (`candidate_025`, `mission_025`, 수정 금지) |
 
-소스 규모: main 21파일 7,416줄 / JVM 테스트 12파일 3,621줄 / 기기 테스트 1파일 237줄.
+소스 규모: main 22파일 7,811줄 / JVM 테스트 16파일 4,604줄 / 기기 테스트 1파일 237줄.
 
 ## 빌드·테스트
 
@@ -310,7 +310,7 @@ slot을 제공할 때만 식당을 넘는다.
 품절·가격변경은 코드 분기가 아니라 `catalog_events`다. `ProductSurface.applyCatalogEvent`가 그 slot
 하나에만 더 높은 authority로 전달하므로 본 메뉴와 독립 option은 보존된다.
 
-## 검증 — JVM 144개, emulator 불필요
+## 검증 — JVM 149개, emulator 불필요
 
 | 파일 | 개수 | 내용 |
 |---|---:|---|
@@ -320,16 +320,16 @@ slot을 제공할 때만 식당을 넘는다.
 | `delivery/SyntheticCatalogTest.kt` | 10 | shipped asset byte로 불변조건 검사, menu type·line slot authoring, digest 결정성, 개인정보 유사 label 부재, 잘못된 catalog 거부 |
 | `delivery/ProductFlowProbeTest.kt` | 7 | 제품 기준 E1–E4 완주, 가격·예상시간, 항목 단위 품절 부분복구, 예산 초과 `ABSTAIN`, 재시작 연속성 |
 | `delivery/ChatIntakeTest.kt` | 18 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성 |
-| `delivery/MultiLineDraftTest.kt` | 9 | 두 메뉴 두 line, 같은 메뉴 옵션 분리, line 지시 우선, 수량·총액, 항목 제거·부활 차단, line ID 불재사용, 단일 commit, 항목 단위 품절 |
+| `delivery/MultiLineDraftTest.kt` | 10 | 두 메뉴 두 line, 같은 메뉴 옵션 분리, line 지시 우선, 수량·총액, 항목 제거·부활 차단, line ID 불재사용, 단일 commit, 항목 단위 품절, product step digest 연속성 |
 | `delivery/ScopedPreferenceTest.kt` | 9 | override > 유형 > 전역 우선순위, authored type만 식당 간 전달, stable slot 제한, 범위별 철회·삭제·정정 독립, 범위 표시 |
-| `delivery/ReviewMemoryTest.kt` | 16 | 리뷰 읽기, 동의 전 무변경, 범위 선택지 제한, scoped 승격·같은 쌍만 적용·유형 전달, 정확한 파생 삭제·부활 차단, 평가 요청 1회 도착·만료·응답 해소, 다중 항목 대상 확정 |
+| `delivery/ReviewMemoryTest.kt` | 20 | 리뷰 읽기, 동의 전 무변경, 범위 선택지 제한, scoped 승격·같은 쌍만 적용·유형 전달, review version 소유권, 최신 직접 지시·정정 보존, 독립 outcome 격리, 평가 요청 원자적 예약·도착·만료·응답 해소, 다중 항목 대상 확정 |
 | `delivery/RatingDisplayTest.kt` | 12 | 평균·척도·건수, 식당 경계, 조건·취향 우선 유지, 동순위 tie-break 양 arm 동일, "내 평점" 근거 badge, count 감쇠, 차단 없음, 삭제 반영 |
 | `delivery/DemoScriptTranscriptTest.kt` | 1 | **화면 검토용.** E1–E4 대본을 실제 화면 조립 함수로 걸어 각 단계 화면을 출력하고, 답할 수 없는 질문·원시 token·내부 상수 노출·중복 행이 없음을 확인 |
-| `delivery/OptionAvailabilityTest.kt` | 9 | 식당별 옵션 가짓수, 미제공 값 ASK·임의 대체 금지·취향 보존, 유료 추가의 항목·수량·예산 반영, 마라/국물/떡볶이 유형의 식당 간 전달 |
+| `delivery/OptionAvailabilityTest.kt` | 10 | 식당별 옵션 가짓수, 미제공 값 ASK·임의 대체 금지·취향 보존, 유료 추가의 항목·수량·예산 반영, 마라/국물/떡볶이 유형의 식당 간 전달 |
 | `delivery/ParticlesTest.kt` | 6 | 조사 선택 규칙(을/를·으로/로·이/가), ㄹ받침 예외, 숫자·영문 끝 라벨 |
-| `delivery/AllRestaurantsCompletionTest.kt` | 2 | 전 식당 × 전 main 메뉴 단독 완주 12조합 + 식당별 전체 메뉴 완주 6조합. 화면과 같은 답변 루프(열린 질문 → 첫 재고 값)로 `ACT` 도달, 답할 수 없는 필수 옵션이 생기면 식당·메뉴·slot을 지목하며 실패 |
+| `delivery/AllRestaurantCompletionTest.kt` | 2 | 6개 식당의 재고 있는 모든 main menu를 새 run에서 선택하고, 제공 가능한 값으로 필수 질문을 해소해 정확히 한 번 `ACT` 되는지 전수검사. 식당별 **전체 메뉴(사이드 포함)를 한 주문에** 담은 장바구니 경로도 같은 방식으로 완주 검사 |
 
-`DemoScriptTranscriptTest`는 에뮬레이터가 이 개발 노트북에 안 올라가서 만든 화면 검토 수단이다.
+`DemoScriptTranscriptTest`는 기기 수동검증 전에 화면 문장을 먼저 전수검사하는 수단이다.
 `MainActivity`와 **같은 조립 함수**(`slotLabel`·`displayValue`·`statusLine`·`DraftPricing`·`Recommender`·
 `reviewScopeChoices`)로 문장을 만들므로 출력이 곧 사람이 읽는 화면이다. 레이아웃·터치·스크롤·
 lifecycle은 여전히 기기 검증 몫이다. 화면 원문을 보려면:
@@ -361,8 +361,8 @@ freeze 전에 JVM에서 재현 가능한 것은 전부 JVM 테스트로 내려�
 
 ### A. 지금 이 저장소에서 (기기 불필요)
 
-0. **freeze 전 최우선 3건 — 전부 완료 (2026-08-03).** 모든 식당 주문 완주 테스트
-   `AllRestaurantsCompletionTest`, 알림 권한 선언 제거, UI 크래시 경로 전수 확인·차단.
+0. **freeze 전 최우선 — 전부 완료 (2026-08-03).** 전 식당 완주 전수검사(장바구니 경로 추가),
+   자유 탐색 UI 크래시 경로 전수 확인·차단.
 1. **제출 문서 초안 3종** — 기술노트 초안 완료(2026-08-03, 루트 `MISSION_AND_TECHNICAL_NOTE.md`,
    제출 가이드 §2의 10항목 전부 커버, 사용자 검토 뒤 8/4 PDF 변환). `INSTALL_AND_USE_GUIDE`·
    `BUILD_AND_SUBMISSION_INFO` 초안 미착수.
@@ -445,21 +445,7 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
 2026-07-31 기준으로 **의도적으로 넣지 않았거나 아직 확인하지 못한 것**을 근거와 함께 남긴다.
 "안 했다"와 "안 하기로 했다"를 구분하는 것이 목적이다.
 
-### 1. 알림 surface — 넣지 않기로 확정, 선언 제거 완료 (2026-08-03)
-
-(b)안으로 확정했다: `POST_NOTIFICATIONS` 선언을 manifest에서 지웠고, 앱은 어떤 선택 권한도
-선언하지 않는다. 지연 평가 요청은 app-local 정본에 정확히 한 번 기록되고 다음 실행의 in-app
-배너로 표시되므로, "알림 권한이 거부된 경우에도 미완료 주문을 완료로 오인하거나 중복 처리하지
-않는다"는 mobile constraint가 **부여·거부할 권한 자체가 없는 형태로** 성립한다.
-
-- 선택 이유: freeze 당일 새 Android surface(`NotificationChannel`·API 33 런타임 권한 흐름)는
-  JVM으로 검증할 수 없는 크래시 표면을 늘리고, 알림은 배너가 이미 보여주는 것을 비추는 부수
-  표시일 뿐이다. 쓰지 않는 권한을 선언한 채 두면 검토에서 불필요한 질문을 부른다.
-- **기술노트에 명시할 것:** "권한 의존 surface를 두지 않아 outcome 연속성이 permission 상태와
-  무관하게 성립한다. 평가 요청의 정본은 ledger이고 표시는 in-app 배너다."
-- 본선 진출 뒤 (a)안(배너 정본 유지 + 부수 알림)으로 확장할 수 있다.
-
-### 2. 실제 기기 network 감지 없음 — 합성 `SET_NETWORK`만
+### 1. 실제 기기 network 감지 없음 — 합성 `SET_NETWORK`만
 
 `ConnectivityManager` 사용처가 0건이다. network 상태는 오직 probe operation과 제품 화면의 네 버튼으로만
 바뀐다.
@@ -473,19 +459,7 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
   claim-off 비교가 영향을 받지 않는다. 넣지 않기로 한다면 기술노트와
   `INSTALL_AND_USE_GUIDE`에 "network 상태는 앱 안에서 전환한다"를 명시한다.
 
-### 3. 6개 식당 전부의 주문 완주 — 검증 완료 (2026-08-03)
-
-심사관은 대본을 따르지 않고 아무 식당이나 고른다. 이전에는 주문 확정(`ACT`)까지 단언하는 테스트가
-다온·온기·마라향에만 있었고, 어느 메뉴의 필수 옵션이 답할 수 없는 상태로 남으면 그 자리에서 막히는
-위험이 있었다.
-
-`AllRestaurantsCompletionTest`가 이를 닫았다: 화면과 같은 답변 루프(`openConfirmationIds` → 그 slot에
-현재 식당이 제공하는 첫 재고 값으로 답)를 catalog의 모든 식당 × 모든 main 메뉴 단독 12조합과 식당별
-전체 메뉴(사이드 포함) 6조합에 대해 돌려 전부 `ACT`·단일 commit에 도달함을 단언한다. 답할 수 없는
-질문·수렴하지 않는 루프는 식당·메뉴·slot을 지목하며 실패한다. catalog가 늘어도 자동으로 커버된다.
-첫 실행에서 결함 0건 — 기존 구현이 이미 전 식당을 완주했다.
-
-### 4. 진짜 multi-select 옵션 — 이번 범위에서 제외
+### 2. 진짜 multi-select 옵션 — 이번 범위에서 제외
 
 토핑 여러 개 동시 선택처럼 한 slot이 값 집합을 갖는 형태는 넣지 않았다. 재료 빼기·토핑 추가는
 이진 옵션 slot으로 표현했다(고수·계란·두부·치즈).
@@ -496,7 +470,7 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
   값 하나라는 계약을 유지한 채 토핑마다 slot을 두는 현재 방식을 유지하는 편이 core를 단순하게 둔다.
   UI에서만 여러 토핑 chip을 한 줄로 묶어 보여주는 것으로 체감을 개선할 수 있다.
 
-### 5. 심사관 자유 탐색 시 크래시 경로 — 전수 확인·차단 완료 (2026-08-03)
+### 3. 심사관 자유 탐색 시 크래시 경로 — 전수 확인·차단 완료 (2026-08-03)
 
 `ui/`의 `surface.` 호출 전수를 분류했다. 읽기 호출을 제외하고 `act`/`actQuiet`/try-catch 밖에서
 상태를 변경하던 호출 9곳을 전부 감쌌다: MainActivity 4곳(`answerScope`의 `remember` 루프,
@@ -510,14 +484,14 @@ Toast가 되고, `answerScope`는 **실제로 저장된 값만** 대화에 말�
 render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core에 있으므로 이 초기화의 영향을 받지
 않는다.
 
-### 6. 기기에서만 가능한 검증 (위 "남은 작업 B" 전체)
+### 4. 기기에서만 가능한 검증 (위 "남은 작업 B" 전체)
 
 `connectedDebugAndroidTest`(ProbeParityTest), 공식 Runner 13-step 완주, V1–V4 변형, `SAMPLE_EXPORT`,
 데모 영상, release 서명 keystore 생성이 모두 미실행이다. 개발 노트북(RAM 5.9 GB, 여유 0.3 GB)에서는
 에뮬레이터가 뜨지 않아 `DemoScriptTranscriptTest`로 화면 내용을 대신 검토했다. 레이아웃·터치 타겟·
 스크롤·Android lifecycle은 그 방법으로 확인할 수 없으므로 8/4 기기 검증에 그대로 남는다.
 
-### 7. 제출물
+### 5. 제출물
 
 `MISSION_AND_TECHNICAL_NOTE`·`INSTALL_AND_USE_GUIDE`·`BUILD_AND_SUBMISSION_INFO`·`DEMO_VIDEO` 미착수.
 기술노트의 뼈대는 이 문서의 "핵심 설계 결정"과 "열린 결정"이다.
@@ -564,11 +538,14 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 | 2026-07-31 | probe 경로 무변경 검증: `ProductionProbeAdapter`·`PublicProbeRunner`·`ReferenceRuns`·계약/metamorphic 테스트는 수정 없이 그린 — line 기제는 draft 구조 선언 시에만 활성화된다. `MISSION_ADAPTER.json`의 `STABLE_VALUE`·`DELAYED_OUTCOME` 의미만 3-scope·만료 알림에 맞춰 보강. `assembleDebug`·`assembleDebugAndroidTest` 통과 |
 | 2026-07-31 | release 서명 배선: `keystore.properties`(비커밋)에서 읽는 `signingConfigs.release`, 설정이 없으면 `packageRelease`가 명시적으로 거부해 서명 안 된 APK를 만들지 않는다. `keystore.properties.example` 템플릿과 `.gitignore` 항목 추가. 일회용 keystore로 실제 서명·`apksigner verify`(v2, 인증서 SHA-256 노출)까지 확인한 뒤 흔적 삭제 — keystore 자체는 8/4 노트북에서 생성 |
 | 2026-07-31 | catalog 확충(식당 3→6, 메뉴 9→19, 유형 4→5)과 E1–E4 대본 이전. 기존 3식당·메뉴는 그대로 두고 새 무대를 더한 뒤 대본만 옮겨, fixture로 쓰는 테스트는 무변경. 새 대본: E1 마라향(고수 커스터마이징 학습→**메뉴 유형** 범위 승인) → E2 금손분식(다른 식당·같은 마라 유형에 고수 자동 적용, 두 메뉴·유료 치즈 추가) → E3(일회성 예외·수저 권한 철회·맵기를 중간맛으로 정정) → E4 마라향(**이 집엔 중간맛이 없어 맵기만 재질문**, 고수는 유지, 사이드 품절 부분복구). 부담 비교를 누적 resolution 총합에서 **초안이 물은 항목 수**로 교정(메뉴 1개 1건 → 메뉴 2개 0건) — 항목을 더 담은 것을 기제의 이득으로 세지 않기 위함 |
+| 2026-08-01 | Dacon 발급 `MISSION_LOCK.json` 수령. 저장소 루트에 원본 그대로 보관하고 공식 v3 schema 검증 통과 (`candidate_025`, `mission_025`, receipt `DACON-SCPC2026-025`) |
+| 2026-08-01 | pre-emulator 정합성 보강: 제품의 line schema·사용자 확인·constraint·평가요청 예약을 해당 `ProductionCore.execute` step 안에서 원자적으로 저장해 before/after digest와 persisted state를 일치시켰다. 리뷰 승인 fact에 `originReviewId`를 기록하고 최신 직접 지시·정정·다른 outcome을 이전 리뷰 삭제로부터 격리했다. 6개 식당의 재고 있는 모든 main menu 완주 전수검사를 추가했다. debug·release JVM 각 148개, `assembleDebug`·`assembleDebugAndroidTest` 통과 |
+| 2026-08-01 | Mission의 알림 권한 거부 제약을 실제로 시연할 수 있도록 평가 요청 알림을 선택적 보조 surface로 구현했다. 평가 요청은 먼저 app-local 정본에 commit되고, 알림은 그 `pending` 상태만 idempotent하게 반영한다. 권한 요청은 사용자의 명시적 버튼으로만 시작하며 거부 시 인앱 배너·주문 상태·중복 방지가 그대로 유지된다. launcher·notification icon도 추가했다 |
 | 2026-07-31 | 확충 과정에서 찾은 결함 4건 수정: (1) 옵션 `price_delta`가 총액에 전혀 반영되지 않던 버그 — `rice.large`의 500원이 죽은 데이터였다. 항목별 `(메뉴+옵션합)×수량`으로 계산하고 `extrasAmount` 노출. (2) 카탈로그 프리셋 밖 금액을 말하면 `say()`가 예외를 던지던 버그 — 파서는 임의 금액을 해석하는데 저장 단계 검사가 프리셋 목록만 봤다. `accepts()`로 일원화. (3) 주문한 메뉴에 없는 옵션을 말하면 조용히 주문 전체 항목으로 들어가 가격까지 누락되던 버그 — 이제 "그 선택이 있는 메뉴가 없다"고 되묻는다. (4) `CATALOG_CANNOT_FULFIL_ASK_AGAIN` 같은 내부 상수가 화면에 그대로 노출되던 것 — 문장으로 교체하고 SCREAMING_SNAKE 노출 검사 추가 |
 | 2026-07-31 | 화면 검토(`DemoScriptTranscriptTest`)로 찾은 결함 5건 수정: (1) **조건이 안정 취향으로 저장되던 버그** — "앞으로도"가 문장 전체에 걸려 예산·음식 성격까지 STABLE이 되어 며칠 뒤 주문에 말한 적 없는 예산이 자동 적용됐다. `USER_CONDITION` slot은 문장 scope와 무관하게 절대 stable로 저장하지 않는다(UX_SPEC E1의 "예산과 음식 성격은 현재 주문 session에서만 사용" 계약과 코드가 어긋나 있었다). (2) 총액 행이 내부 digest(`total.<hash>`)를 그대로 보여주던 것을 금액 표시로 교체(`displayValue`). (3) 확인 완료 행이 "확인 완료 · 확인 완료"로 중복 출력되던 것 정리(`statusLine`). (4) 같은 trait가 "오늘 입력"과 "직접 저장"으로 두 번 계산·표시되던 추천 근거 dedupe. (5) 조사 오류("맵기을 순한맛로") — 라벨에서 받침을 보고 을/를·으로/로를 고르는 `Particles` 도입. `setLineOption`이 해당 항목에 없는 slot을 받아 중복 행을 만들 수 있던 구멍도 함께 막음. JVM 131개 통과 |
-| 2026-08-03 | 전 식당 완주 검증(freeze 전 최우선 1/3): `AllRestaurantsCompletionTest` 2개 신설 — 6식당 × main 메뉴 단독 12조합과 식당별 전체 메뉴 6조합을 화면과 같은 답변 루프로 완주, 전부 `ACT` 도달·결함 0건. JVM 144개 통과 |
+| 2026-08-03 | 전 식당 완주 검증: 화면과 같은 답변 루프로 6식당 × main 메뉴 단독과 식당별 전체 메뉴를 완주, 전부 `ACT` 도달·결함 0건. 8/1의 `AllRestaurantCompletionTest`와 병합하며 **전체 메뉴 장바구니 경로**만 그 파일에 남기고 중복 파일은 삭제 |
 | 2026-08-03 | 기기 육안 테스트 피드백 반영 — 표시 전용, 판단 로직·probe 경로 무변경: ① "현재 상황"의 내부 정보(주문 session·process epoch·비교 arm·마지막 판단·catalog digest)를 하단 접이식 "검증 정보 (심사용)"로 이동 ② 내부 line ID 노출 제거(`항목 l1` → `항목 1`, `slotLabel` 포함) ③ 상단 "지금 단계" 배너(식당→메뉴→옵션 확인→확정→평가)와 "다음 할 일" 한 줄 추가, 주문 확정 버튼을 초안 하단에서 배너로 이동 ④ 대화형 액션(문장 전송·질문 답·재사용 범위 답) 후 대화 위치로 자동 스크롤 ⑤ 여러 버튼 핸들러가 `act()` 재렌더 **뒤에** chat을 추가해 방금 행동의 피드백이 다음 상호작용까지 화면에 안 보이던 표시 버그 수정. JVM 144개 통과 |
-| 2026-08-03 | 알림 (b)안 확정(freeze 전 최우선 2/3): `POST_NOTIFICATIONS` 선언 제거 — 앱은 선택 권한을 하나도 선언하지 않고, 지연 평가 요청은 ledger 정본 + in-app 배너로 성립. 선언·구현 불일치 해소, 기술노트 서술 지침을 미구현 절 1에 기록 |
+| 2026-08-03 | 알림: 8/3 작업이 낡은 7/31 기반 위에서 진행되어 "구현이 없다"는 전제로 `POST_NOTIFICATIONS` 선언을 지웠으나, 8/1 커밋에 이미 `EvaluationNotification` 구현이 있었다. 병합 시 **선언을 되살려** (a)안(ledger 정본 + 배너, 알림은 부수 표시)으로 통일 |
 | 2026-08-03 | UI 크래시 경로 전수 차단(freeze 전 최우선 3/3): `act`/try-catch 밖 변경 호출 9곳(Main 4·Memory 5, 공통 `guarded` 헬퍼) 감싸기 — 낡은 항목·중복 탭이 크래시 대신 Toast. `answerScope`는 실제 저장된 값만 대화에 말함. `clearTransientScreenState()`로 session 전환 5곳(식당 chip·대본 버튼)에서 후보·범위 질문·리뷰 진행 상태 초기화. JVM 144개 통과 |
 | 2026-08-03 | 채팅방형 화면 구성(표시 전용, 제품 결정): 입력창을 메신저처럼 화면 하단에 고정하고 스레드는 위에서 스크롤. 스레드 순서를 대화 흐름대로 재배치(대화 → 질문 → 추천 후보 → 주문 초안서 → 주문 완료 후 평가 → 상황, 대본·network·검증 도구는 아래로), 빈 초안 placeholder 제거. 흐름 자체(자연어 → 후보 → 선택 → 항목별 초안 → 빈 칸 질문 → 확정 → 평가 요청 → 리뷰 범위 승인)는 기존 판단 경로 그대로다. JVM 144개 통과 |
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |

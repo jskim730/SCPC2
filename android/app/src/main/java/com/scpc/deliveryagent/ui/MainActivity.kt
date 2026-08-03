@@ -142,6 +142,15 @@ class MainActivity : Activity() {
         render()
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == EvaluationNotification.PERMISSION_REQUEST_CODE) render()
+    }
+
     // ----------------------------------------------------------------- chat
 
     private fun onSend(message: String) {
@@ -262,6 +271,7 @@ class MainActivity : Activity() {
 
     private fun render() {
         val state = surface.state()
+        EvaluationNotification.sync(this, surface.pendingEvaluationRequest())
         openQuestions = AsprEngine.openConfirmationIds(state)
         content.removeAllViews()
 
@@ -463,6 +473,27 @@ class MainActivity : Activity() {
         if (surface.pendingEvaluationRequest()) {
             content.addView(
                 Ui.body(this, "지난 주문 평가 요청이 도착했습니다. 별점과 한 줄 평가를 남겨 주세요."),
+            )
+        }
+
+        if (EvaluationNotification.hasPermission(this)) {
+            content.addView(
+                Ui.body(
+                    this,
+                    "평가 알림: 허용됨 · 알림은 보조 표시이며 이 화면의 평가 요청이 정본입니다.",
+                ),
+            )
+        } else {
+            content.addView(
+                Ui.body(
+                    this,
+                    "평가 알림: 허용 안 됨 · 주문 기록과 이 화면의 평가 요청은 그대로 유지됩니다.",
+                ),
+            )
+            content.addView(
+                Ui.button(this, "평가 알림 허용 요청") {
+                    EvaluationNotification.requestPermission(this)
+                },
             )
         }
 

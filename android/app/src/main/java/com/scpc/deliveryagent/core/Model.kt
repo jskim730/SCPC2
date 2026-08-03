@@ -117,6 +117,8 @@ data class Fact(
     val slotId: String,
     val value: String,
     val source: FactSource,
+    /** Review approval that created this version; null for direct user input. */
+    val originReviewId: String? = null,
     val confidence: Confidence,
     val permission: Permission,
     val lifetime: Lifetime,
@@ -162,6 +164,7 @@ data class Fact(
         .put("slotId", slotId)
         .put("value", value)
         .put("source", source.name)
+        .put("originReviewId", originReviewId ?: JSONObject.NULL)
         .put("confidence", confidence.name)
         .put("permission", permission.name)
         .put("lifetime", lifetime.name)
@@ -186,6 +189,7 @@ data class Fact(
             slotId = json.getString("slotId"),
             value = json.getString("value"),
             source = FactSource.valueOf(json.getString("source")),
+            originReviewId = json.optNullableString("originReviewId"),
             confidence = Confidence.valueOf(json.getString("confidence")),
             permission = Permission.valueOf(json.getString("permission")),
             lifetime = Lifetime.valueOf(json.getString("lifetime")),
