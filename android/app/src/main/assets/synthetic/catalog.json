@@ -12,7 +12,9 @@
       "stable_option_slots": [
         "option.rice",
         "option.saltiness",
-        "option.egg"
+        "option.egg",
+        "option.broth",
+        "option.greenonion"
       ]
     },
     {
@@ -21,7 +23,10 @@
       "course": "main",
       "stable_option_slots": [
         "option.spiciness",
-        "option.cheese"
+        "option.cheese",
+        "option.ricecake",
+        "option.fishcake",
+        "option.greenonion"
       ]
     },
     {
@@ -31,20 +36,26 @@
       "stable_option_slots": [
         "option.spiciness",
         "option.cilantro",
-        "option.tofu"
+        "option.tofu",
+        "option.noodle",
+        "option.greenonion"
       ]
     },
     {
       "token": "menutype.side_fried",
       "label": "튀김 사이드",
       "course": "side",
-      "stable_option_slots": []
+      "stable_option_slots": [
+        "option.crispy"
+      ]
     },
     {
       "token": "menutype.side_rice",
       "label": "밥류 사이드",
       "course": "side",
-      "stable_option_slots": []
+      "stable_option_slots": [
+        "option.pickle"
+      ]
     }
   ],
   "scope_phrases": {
@@ -572,6 +583,236 @@
           ]
         }
       ]
+    },
+    {
+      "scope_token": "option.broth",
+      "kind": "menu_option",
+      "label": "국물 양",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "broth.less",
+          "label": "적게",
+          "price_delta": 0,
+          "phrases": [
+            "국물 적게",
+            "국물 조금",
+            "국물 적게요"
+          ]
+        },
+        {
+          "token": "broth.normal",
+          "label": "보통",
+          "price_delta": 0,
+          "phrases": [
+            "국물 보통",
+            "국물은 보통"
+          ]
+        },
+        {
+          "token": "broth.more",
+          "label": "많이",
+          "price_delta": 0,
+          "phrases": [
+            "국물 많이",
+            "국물 넉넉히",
+            "국물 넉넉하게"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.greenonion",
+      "kind": "menu_option",
+      "label": "파",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "greenonion.exclude",
+          "label": "빼기",
+          "price_delta": 0,
+          "phrases": [
+            "파 빼",
+            "파 빼고",
+            "파는 빼",
+            "파 없이",
+            "파 빼주세요"
+          ]
+        },
+        {
+          "token": "greenonion.include",
+          "label": "그대로",
+          "price_delta": 0,
+          "phrases": [
+            "파 그대로",
+            "파 넣어",
+            "파 넣어주세요"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.ricecake",
+      "kind": "menu_option",
+      "label": "떡 종류",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "ricecake.wheat",
+          "label": "밀떡",
+          "price_delta": 0,
+          "phrases": [
+            "밀떡",
+            "밀떡으로",
+            "밀떡이요"
+          ]
+        },
+        {
+          "token": "ricecake.rice",
+          "label": "쌀떡",
+          "price_delta": 0,
+          "phrases": [
+            "쌀떡",
+            "쌀떡으로",
+            "쌀떡이요"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.fishcake",
+      "kind": "menu_option",
+      "label": "어묵 추가",
+      "priced": true,
+      "required": false,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "fishcake.none",
+          "label": "안 넣기",
+          "price_delta": 0,
+          "phrases": [
+            "어묵 빼",
+            "어묵 없이",
+            "어묵 안"
+          ]
+        },
+        {
+          "token": "fishcake.add",
+          "label": "어묵 추가",
+          "price_delta": 1500,
+          "phrases": [
+            "어묵 추가",
+            "어묵 넣어",
+            "어묵도"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.noodle",
+      "kind": "menu_option",
+      "label": "사리",
+      "priced": true,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "noodle.none",
+          "label": "사리 없이",
+          "price_delta": 0,
+          "phrases": [
+            "사리 빼",
+            "사리 없이",
+            "사리 안"
+          ]
+        },
+        {
+          "token": "noodle.glass",
+          "label": "당면",
+          "price_delta": 1000,
+          "phrases": [
+            "당면",
+            "당면으로",
+            "당면 추가"
+          ]
+        },
+        {
+          "token": "noodle.udon",
+          "label": "우동면",
+          "price_delta": 1500,
+          "phrases": [
+            "우동면",
+            "우동 사리",
+            "우동면으로"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.crispy",
+      "kind": "menu_option",
+      "label": "튀김 정도",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "crispy.extra",
+          "label": "바삭하게",
+          "price_delta": 0,
+          "phrases": [
+            "바삭하게",
+            "바삭바삭",
+            "더 바삭하게"
+          ]
+        },
+        {
+          "token": "crispy.normal",
+          "label": "보통",
+          "price_delta": 0,
+          "phrases": [
+            "튀김 보통",
+            "튀김은 보통",
+            "보통으로 튀겨"
+          ]
+        }
+      ]
+    },
+    {
+      "scope_token": "option.pickle",
+      "kind": "menu_option",
+      "label": "단무지",
+      "priced": false,
+      "required": true,
+      "value_kind": "enumerated",
+      "values": [
+        {
+          "token": "pickle.exclude",
+          "label": "빼기",
+          "price_delta": 0,
+          "phrases": [
+            "단무지 빼",
+            "단무지 없이",
+            "단무지는 빼"
+          ]
+        },
+        {
+          "token": "pickle.include",
+          "label": "그대로",
+          "price_delta": 0,
+          "phrases": [
+            "단무지 그대로",
+            "단무지 주세요"
+          ]
+        }
+      ]
     }
   ],
   "restaurants": [
@@ -584,7 +825,9 @@
         "option.saltiness",
         "option.rice",
         "option.utensil",
-        "option.quantity"
+        "option.quantity",
+        "option.broth",
+        "option.greenonion"
       ],
       "order_level_slots": [
         "option.utensil"
@@ -597,7 +840,9 @@
           "line_option_slots": [
             "option.spiciness",
             "option.saltiness",
-            "option.rice"
+            "option.rice",
+            "option.broth",
+            "option.greenonion"
           ],
           "price_delta": 11500,
           "in_stock": true,
@@ -620,7 +865,9 @@
           "line_option_slots": [
             "option.spiciness",
             "option.saltiness",
-            "option.rice"
+            "option.rice",
+            "option.broth",
+            "option.greenonion"
           ],
           "price_delta": 12000,
           "in_stock": true,
@@ -644,7 +891,11 @@
         "option.saltiness",
         "option.rice",
         "option.utensil",
-        "option.quantity"
+        "option.quantity",
+        "option.broth",
+        "option.greenonion",
+        "option.crispy",
+        "option.pickle"
       ],
       "order_level_slots": [
         "option.utensil"
@@ -656,7 +907,9 @@
           "menu_type": "menutype.soup_meal",
           "line_option_slots": [
             "option.saltiness",
-            "option.rice"
+            "option.rice",
+            "option.broth",
+            "option.greenonion"
           ],
           "price_delta": 10800,
           "in_stock": true,
@@ -677,7 +930,9 @@
           "menu_type": "menutype.soup_meal",
           "line_option_slots": [
             "option.saltiness",
-            "option.rice"
+            "option.rice",
+            "option.broth",
+            "option.greenonion"
           ],
           "price_delta": 10200,
           "in_stock": true,
@@ -696,7 +951,9 @@
           "token": "menu.ongi.dumpling",
           "label": "바삭 만두",
           "menu_type": "menutype.side_fried",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.crispy"
+          ],
           "price_delta": 3500,
           "in_stock": true,
           "eta_minutes": 20,
@@ -712,7 +969,9 @@
           "token": "menu.ongi.riceball",
           "label": "주먹밥",
           "menu_type": "menutype.side_rice",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.pickle"
+          ],
           "price_delta": 2800,
           "in_stock": true,
           "eta_minutes": 15,
@@ -726,7 +985,9 @@
           "token": "menu.ongi.dumpling.soldout",
           "label": "바삭 만두",
           "menu_type": "menutype.side_fried",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.crispy"
+          ],
           "price_delta": 3500,
           "in_stock": false,
           "eta_minutes": 20,
@@ -743,7 +1004,10 @@
         "option.spiciness",
         "option.rice",
         "option.utensil",
-        "option.quantity"
+        "option.quantity",
+        "option.ricecake",
+        "option.fishcake",
+        "option.greenonion"
       ],
       "order_level_slots": [
         "option.utensil"
@@ -754,7 +1018,10 @@
           "label": "매운 떡볶이",
           "menu_type": "menutype.tteokbokki",
           "line_option_slots": [
-            "option.spiciness"
+            "option.spiciness",
+            "option.ricecake",
+            "option.fishcake",
+            "option.greenonion"
           ],
           "price_delta": 9500,
           "in_stock": true,
@@ -773,7 +1040,10 @@
           "label": "순한 떡볶이",
           "menu_type": "menutype.tteokbokki",
           "line_option_slots": [
-            "option.spiciness"
+            "option.spiciness",
+            "option.ricecake",
+            "option.fishcake",
+            "option.greenonion"
           ],
           "price_delta": 9500,
           "in_stock": true,
@@ -798,7 +1068,10 @@
         "option.rice",
         "option.egg",
         "option.utensil",
-        "option.quantity"
+        "option.quantity",
+        "option.broth",
+        "option.greenonion",
+        "option.pickle"
       ],
       "order_level_slots": [
         "option.utensil"
@@ -811,7 +1084,9 @@
           "line_option_slots": [
             "option.saltiness",
             "option.rice",
-            "option.egg"
+            "option.egg",
+            "option.broth",
+            "option.greenonion"
           ],
           "price_delta": 9800,
           "in_stock": true,
@@ -833,7 +1108,9 @@
           "line_option_slots": [
             "option.saltiness",
             "option.rice",
-            "option.egg"
+            "option.egg",
+            "option.broth",
+            "option.greenonion"
           ],
           "price_delta": 11200,
           "in_stock": true,
@@ -851,7 +1128,9 @@
           "token": "menu.hanbam.gimbap",
           "label": "기본 김밥",
           "menu_type": "menutype.side_rice",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.pickle"
+          ],
           "price_delta": 3200,
           "in_stock": true,
           "eta_minutes": 12,
@@ -874,7 +1153,10 @@
         "option.cilantro",
         "option.tofu",
         "option.utensil",
-        "option.quantity"
+        "option.quantity",
+        "option.noodle",
+        "option.greenonion",
+        "option.crispy"
       ],
       "order_level_slots": [
         "option.utensil"
@@ -893,7 +1175,9 @@
           "line_option_slots": [
             "option.spiciness",
             "option.cilantro",
-            "option.tofu"
+            "option.tofu",
+            "option.noodle",
+            "option.greenonion"
           ],
           "price_delta": 12500,
           "in_stock": true,
@@ -913,7 +1197,9 @@
           "line_option_slots": [
             "option.spiciness",
             "option.cilantro",
-            "option.tofu"
+            "option.tofu",
+            "option.noodle",
+            "option.greenonion"
           ],
           "price_delta": 14000,
           "in_stock": true,
@@ -930,7 +1216,9 @@
           "token": "menu.marahyang.guobaorou",
           "label": "꿔바로우",
           "menu_type": "menutype.side_fried",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.crispy"
+          ],
           "price_delta": 5200,
           "in_stock": true,
           "eta_minutes": 18,
@@ -945,7 +1233,9 @@
           "token": "menu.marahyang.guobaorou.soldout",
           "label": "꿔바로우",
           "menu_type": "menutype.side_fried",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.crispy"
+          ],
           "price_delta": 5200,
           "in_stock": false,
           "eta_minutes": 18,
@@ -963,7 +1253,12 @@
         "option.cheese",
         "option.cilantro",
         "option.utensil",
-        "option.quantity"
+        "option.quantity",
+        "option.ricecake",
+        "option.fishcake",
+        "option.greenonion",
+        "option.noodle",
+        "option.pickle"
       ],
       "order_level_slots": [
         "option.utensil"
@@ -975,7 +1270,10 @@
           "menu_type": "menutype.tteokbokki",
           "line_option_slots": [
             "option.spiciness",
-            "option.cheese"
+            "option.cheese",
+            "option.ricecake",
+            "option.fishcake",
+            "option.greenonion"
           ],
           "price_delta": 9800,
           "in_stock": true,
@@ -994,7 +1292,9 @@
           "menu_type": "menutype.mala",
           "line_option_slots": [
             "option.spiciness",
-            "option.cilantro"
+            "option.cilantro",
+            "option.noodle",
+            "option.greenonion"
           ],
           "price_delta": 11000,
           "in_stock": true,
@@ -1011,7 +1311,9 @@
           "token": "menu.geumson.cheese_gimbap",
           "label": "치즈 김밥",
           "menu_type": "menutype.side_rice",
-          "line_option_slots": [],
+          "line_option_slots": [
+            "option.pickle"
+          ],
           "price_delta": 4000,
           "in_stock": true,
           "eta_minutes": 13,

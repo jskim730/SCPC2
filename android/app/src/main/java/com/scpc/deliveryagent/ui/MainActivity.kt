@@ -65,6 +65,9 @@ class MainActivity : Activity() {
     private var showScript = false
     private var showDiagnostics = false
 
+    /** The draft row whose value chips are currently open, if any. */
+    private var editingFieldId: String? = null
+
     /** Set by the dialog-style actions so the reply scrolls into view. */
     private var scrollChatIntoView = false
     private var conversationAnchor: View? = null
@@ -95,6 +98,7 @@ class MainActivity : Activity() {
     private fun clearTransientScreenState() {
         candidates = emptyList()
         pendingScope = emptyList()
+        editingFieldId = null
         reviewRating = null
         reviewOffers = emptyList()
         reviewId = null
@@ -330,21 +334,11 @@ class MainActivity : Activity() {
             0 -> "아래에서 주문할 식당을 골라 주세요."
             1 -> "먹고 싶은 것과 조건을 말해 주세요. 추천 후보에서 메뉴를 담습니다."
             2 -> "확인이 필요한 항목 ${openQuestions.size}개에 답해 주세요."
-            3 -> "확인이 끝났습니다. 아래 버튼으로 이번 주문을 확정할 수 있습니다."
+            3 -> "확인이 끝났습니다. 주문서의 \"이대로 주문하기\"를 누르면 기록됩니다."
             else -> "지난 주문이 어땠는지 평가를 남길 수 있습니다."
         }
         content.addView(Ui.body(this, "다음 할 일: $next"))
-        if (stage == 3 && restaurant != null && state.fields.isNotEmpty()) {
-            content.addView(
-                Ui.button(
-                    this,
-                    "이대로 확인하고 가상 주문 기록 · 합성 총액 ${pricing.formatAmount(pricing.total(state))}",
-                    primary = true,
-                ) {
-                    act { it.requestDecision(restaurant) }
-                },
-            )
-        }
+        // The confirm button lives on the draft card, where the order is read.
     }
 
     /** Every synthetic restaurant, offered whenever no order is open yet. */
@@ -720,43 +714,67 @@ class MainActivity : Activity() {
         )
     }
 
+    /**
+     * The order draft, delivered into the thread as one card.
+     *
+     * Every line of it can be acted on where it is read: a row shows what it
+     * says now and opens the values this restaurant actually offers when the
+     * user asks to change it. Blanks and filled values use the same control, so
+     * filling one in and correcting one are the same gesture.
+     */
     private fun renderDraft(state: ProductionState) {
         val restaurant = currentRestaurant()
         val lines = surface.lines()
         // No empty placeholder card: before anything is in the draft, the stage
         // banner already says what to do, and the thread stays a conversation.
         if (state.fields.isEmpty() && lines.isEmpty()) return
-        content.addView(Ui.section(this, "주문 초안서"))
 
-        fun renderFieldRow(field: com.scpc.deliveryagent.core.DraftField) {
+        content.addView(Ui.chatLine(this, "에이전트:", "지금까지의 주문서입니다."))
+        val card = Ui.card(this)
+        content.addView(card)
+        card.addView(Ui.section(this, "주문서 초안"))
+
+        fun renderFieldRow(field: DraftField) {
             val entry = catalog.value(field.value)
             val amount = if (entry != null && entry.priceDelta > 0) {
                 " · ${pricing.formatAmount(entry.priceDelta)}"
             } else {
                 ""
             }
-            content.addView(
-                Ui.row(
-                    this,
-                    catalog.slotLabel(field.slotId),
-                    field.displayValue(catalog, pricing, state) + amount,
-                    field.statusLine(state),
+            val choices = editChoices(field, restaurant)
+            val open = editingFieldId == field.fieldId
+            card.addView(
+                Ui.editableRow(
+                    context = this,
+                    label = catalog.slotLabel(field.slotId),
+                    value = field.displayValue(catalog, pricing, state) + amount,
+                    status = field.statusLine(state),
+                    editLabel = if (open) "닫기" else "변경",
+                    onEdit = if (choices.isEmpty()) {
+                        null
+                    } else {
+                        {
+                            editingFieldId = if (open) null else field.fieldId
+                            render()
+                        }
+                    },
                 ),
             )
+            if (open && choices.isNotEmpty()) card.addView(Ui.chipRow(this, choices))
         }
 
-        // One card per order line: its menu, its own options, its own controls.
+        // One block per order line: its menu, its own options, its own controls.
         val renderedFieldIds = mutableSetOf<String>()
         lines.forEach { line ->
             val menuLabel = line.menuValueToken?.let(catalog::valueLabel) ?: "메뉴 미정"
-            content.addView(Ui.body(this, "· 항목 ${line.lineId.removePrefix("l")} — $menuLabel"))
+            card.addView(Ui.body(this, "· 항목 ${line.lineId.removePrefix("l")} — $menuLabel"))
             line.slots.forEach slot@{ binding ->
                 val field = state.fields[AsprEngine.fieldIdFor(binding.lineSlotId)] ?: return@slot
                 renderedFieldIds += field.fieldId
                 renderFieldRow(field)
             }
             if (restaurant != null) {
-                content.addView(
+                card.addView(
                     Ui.chipRow(
                         this,
                         (1..3).map { count ->
@@ -789,8 +807,8 @@ class MainActivity : Activity() {
         if (restaurant != null && lines.isNotEmpty()) {
             val sides = catalog.sideMenus(restaurant).filter { it.inStock }
             if (sides.isNotEmpty()) {
-                content.addView(Ui.body(this, "사이드 추가"))
-                content.addView(
+                card.addView(Ui.body(this, "사이드 추가"))
+                card.addView(
                     Ui.chipRow(
                         this,
                         sides.map { side ->
@@ -807,7 +825,7 @@ class MainActivity : Activity() {
         val total = pricing.total(state)
         val budget = pricing.budgetLimit(state)
         val estimate = pricing.estimateMinutes(state)
-        content.addView(
+        card.addView(
             Ui.body(
                 this,
                 buildString {
@@ -820,20 +838,59 @@ class MainActivity : Activity() {
             ),
         )
         pricing.lines(state).filter { !it.inStock }.takeIf { it.isNotEmpty() }?.let { soldOut ->
-            content.addView(
+            card.addView(
                 Ui.body(this, "품절로 다시 골라야 하는 항목: " + soldOut.joinToString { it.label }),
             )
         }
         val confirmed = state.fields.values.count { it.status == FieldStatus.CONFIRMED }
-        content.addView(
+        card.addView(
             Ui.body(
                 this,
                 "확인 완료 $confirmed · 확인 필요 ${openQuestions.size} · " +
                     "지금까지 필요한 확인·입력 ${state.resolutions.size}회",
             ),
         )
-        // The confirm button lives in the stage banner at the top, where the
-        // "next thing to do" line points at it.
+        if (restaurant != null) {
+            if (openQuestions.isEmpty()) {
+                card.addView(
+                    Ui.button(this, "이대로 주문하기 · ${pricing.formatAmount(total)}", primary = true) {
+                        act { it.requestDecision(restaurant) }
+                    },
+                )
+            } else {
+                card.addView(
+                    Ui.body(this, "확인이 필요한 항목 ${openQuestions.size}개를 채우면 주문할 수 있습니다."),
+                )
+            }
+        }
+    }
+
+    /**
+     * The values this restaurant offers for one draft row, ready to tap. Empty
+     * when the row is not a choice the user makes here, such as the total.
+     */
+    private fun editChoices(
+        field: DraftField,
+        restaurant: RestaurantDefinition?,
+    ): List<Pair<String, () -> Unit>> {
+        if (restaurant == null) return emptyList()
+        if (field.slotId == AsprEngine.SLOT_TOTAL) return emptyList()
+        val slot = catalog.slotOfFieldSlotId(field.slotId)
+            ?: catalog.baseSlotOfLineSlotId(field.slotId)
+            ?: return emptyList()
+        return catalog.valuesFor(restaurant, slot.scopeToken)
+            .filter { it.inStock }
+            .map { option ->
+                val label = if (option.priceDelta > 0) {
+                    "${option.label} ${pricing.formatAmount(option.priceDelta)}"
+                } else {
+                    option.label
+                }
+                label to {
+                    editingFieldId = null
+                    answerField(field, option.token)
+                }
+            }
     }
 
     /** A fixed walk of the four episodes, kept for the demo recording. */

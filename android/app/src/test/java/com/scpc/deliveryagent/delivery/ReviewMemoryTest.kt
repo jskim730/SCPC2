@@ -48,6 +48,7 @@ class ReviewMemoryTest {
         surface.addLine(daon, "menu.daon.clear")
         surface.say(daon, "앞으로도 수저 빼고 밥은 보통으로")
         surface.remember(daon, catalog.slot(Slots.SALTINESS), "salt.normal", stable = false)
+        surface.answerRemaining(catalog, daon)
         return surface.requestDecision(daon)
     }
 

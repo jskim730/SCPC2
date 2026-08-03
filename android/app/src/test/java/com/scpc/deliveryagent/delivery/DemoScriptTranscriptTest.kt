@@ -282,6 +282,9 @@ class DemoScriptTranscriptTest {
 
         surface.addLine(marahyang, "menu.marahyang.malatang")
         say(surface, marahyang, "앞으로도 수저 빼고")
+        // 파 is offered by every menu type, so this one sentence is what the
+        // later episodes carry across restaurants without asking again.
+        say(surface, marahyang, "앞으로도 파는 빼줘")
         screen(surface, marahyang, "E1 — 초안 구성 중")
         check(surface, marahyang, "E1 초안")
 
@@ -295,6 +298,11 @@ class DemoScriptTranscriptTest {
         // is not a burden the mechanism was supposed to remove.
         val e1Open = stillOpen.size
         surface.setLineOption(marahyang, "l1", catalog.slot(Slots.CILANTRO), "cilantro.keep")
+        // The noodle choice is stated for reuse, so the next restaurant's mala
+        // dish arrives with it already filled while 떡 종류, which no earlier
+        // order ever named, is still asked about there.
+        surface.remember(marahyang, catalog.slot("option.noodle"), "noodle.glass", stable = true)
+        surface.answerRemaining(catalog, marahyang)
 
         val e1 = surface.requestDecision(marahyang)
         screen(surface, marahyang, "E1 — 확정 직후")
@@ -376,6 +384,7 @@ class DemoScriptTranscriptTest {
         )
         screen(surface, geumson, "E2 — 유료 추가 반영")
 
+        surface.answerRemaining(catalog, geumson)
         val e2 = surface.requestDecision(geumson)
         assertEquals("ACT", e2.result.getString("decision_state"))
         transcript.appendLine()
@@ -473,6 +482,7 @@ class DemoScriptTranscriptTest {
         assertTrue("품절 뒤 총액이 줄어야 한다", pricing.total(after) < beforeStock)
 
         surface.removeLine(marahyang, "l2")
+        surface.answerRemaining(catalog, marahyang)
         val e4 = surface.requestDecision(marahyang)
         screen(surface, marahyang, "E4 — 품절 항목 제거 후 확정")
         assertEquals("ACT", e4.result.getString("decision_state"))

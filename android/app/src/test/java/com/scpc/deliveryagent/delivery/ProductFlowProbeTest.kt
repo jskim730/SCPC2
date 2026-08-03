@@ -68,6 +68,7 @@ class ProductFlowProbeTest {
     fun `E1 completes an order and prices it from the catalog`() {
         val surface = surface()
         walkEpisodeOne(surface)
+        surface.answerRemaining(catalog, daon)
         val outcome = surface.requestDecision(daon)
 
         assertEquals("ACT", decision(outcome))
@@ -118,6 +119,7 @@ class ProductFlowProbeTest {
         assertEquals("ASK", decision(outcome))
 
         surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
+        surface.answerRemaining(catalog, ongi)
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
     }
 
@@ -184,6 +186,7 @@ class ProductFlowProbeTest {
         surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
         surface.addLine(ongi, "menu.ongi.dumpling")
         surface.addRequestNote(ongi, "note.sauce_separate")
+        surface.answerRemaining(catalog, ongi)
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
 
         val totalBefore = pricing.total(surface.state())
@@ -232,6 +235,7 @@ class ProductFlowProbeTest {
 
         // Choosing a replacement for that line completes the order again.
         surface.chooseLineMenu(ongi, "l2", "menu.ongi.riceball")
+        surface.answerRemaining(catalog, ongi)
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
         assertEquals(13_600, pricing.total(surface.state()))
     }
@@ -246,6 +250,7 @@ class ProductFlowProbeTest {
         surface.remember(ongi, catalog.slot(Slots.RICE), "rice.normal", stable = false)
         surface.remember(ongi, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = false)
         surface.addLine(ongi, "menu.ongi.riceball")
+        surface.answerRemaining(catalog, ongi)
 
         val outcome = surface.requestDecision(ongi)
         assertTrue(pricing.total(surface.state()) > pricing.budgetLimit(surface.state())!!)

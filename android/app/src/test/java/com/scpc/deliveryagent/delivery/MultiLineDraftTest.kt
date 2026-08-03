@@ -230,6 +230,7 @@ class MultiLineDraftTest {
         surface.remember(ongi, catalog.slot(Slots.RICE), "rice.normal", stable = false)
         surface.remember(ongi, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = false)
         surface.addLine(ongi, "menu.ongi.dumpling")
+        surface.answerRemaining(catalog, ongi)
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
         assertEquals(1, surface.state().actions.size)
 
@@ -254,6 +255,7 @@ class MultiLineDraftTest {
         surface.remember(ongi, catalog.slot(Slots.RICE), "rice.normal", stable = false)
         surface.remember(ongi, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = false)
         surface.addLine(ongi, "menu.ongi.dumpling")
+        surface.answerRemaining(catalog, ongi)
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
 
         surface.applyCatalogEvent("catalog.ongi.menu.dumpling.soldout")

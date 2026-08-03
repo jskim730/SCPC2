@@ -284,6 +284,74 @@ object Ui {
         }
     }
 
+    /** A card the agent puts into the thread, such as the order draft. */
+    fun card(context: Context): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12))
+        background = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = dp(context, 14).toFloat()
+            setStroke(dp(context, 1), Color.parseColor("#D0D0D0"))
+        }
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            topMargin = dp(context, 6)
+            bottomMargin = dp(context, 6)
+        }
+    }
+
+    /**
+     * One line of the draft the user can act on: what it is, what it says now
+     * and a control to change it. The status word is always spelled out next to
+     * the value, so nothing here rests on colour.
+     */
+    fun editableRow(
+        context: Context,
+        label: String,
+        value: String,
+        status: String,
+        editLabel: String,
+        onEdit: (() -> Unit)?,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(context, 4), 0, dp(context, 4))
+        addView(
+            TextView(context).apply {
+                text = label
+                textSize = 14f
+                setTypeface(typeface, Typeface.BOLD)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3f),
+        )
+        addView(
+            TextView(context).apply {
+                text = if (status.isEmpty()) value else "$value\n$status"
+                textSize = 14f
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 4f),
+        )
+        if (onEdit != null) {
+            addView(
+                Button(context).apply {
+                    text = editLabel
+                    contentDescription = "$label $editLabel"
+                    textSize = 12f
+                    minWidth = dp(context, 64)
+                    minHeight = dp(context, 44)
+                    setPadding(dp(context, 8), 0, dp(context, 8), 0)
+                    setOnClickListener { onEdit() }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+    }
+
     fun divider(context: Context): View = View(context).apply {
         setBackgroundColor(Color.LTGRAY)
         layoutParams = LinearLayout.LayoutParams(
