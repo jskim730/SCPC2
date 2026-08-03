@@ -479,7 +479,7 @@ class ProductionCore(
         view: RoleView,
         notes: JSONObject,
     ): Pair<DecisionState, ActionRecord?> = when (step.operation) {
-        Op.RESET_AND_START -> resetAndStart(state, step, notes)
+        Op.RESET_AND_START -> resetAndStart(state, step, view, notes)
         Op.UPSERT_FACT -> upsertFact(state, step, view, notes)
         Op.ADVANCE_SESSION -> advanceSession(state, step, view, notes)
         Op.REQUEST_DECISION -> requestDecision(state, step, view, notes)
@@ -498,6 +498,7 @@ class ProductionCore(
     private fun resetAndStart(
         state: ProductionState,
         step: ProbeStep,
+        view: RoleView,
         notes: JSONObject,
     ): Pair<DecisionState, ActionRecord?> {
         if (state.runId.isNotEmpty()) {
@@ -519,6 +520,11 @@ class ProductionCore(
         state.sessionLabel = step.sessionId
         state.sessionId = internalSessionKey(step.sessionId, state.sessionSeq)
         state.recoveryRequired = false
+        // RESET clears the previous run's active context, so context carried by
+        // the new run's first step must be applied afterwards. Applying it
+        // before clearActiveRunState() would immediately erase the goal and
+        // target and leave product UI unable to resolve its selected entity.
+        updateContext(state, view)
         notes.put("run_id", state.runId)
         return DecisionState.NO_DECISION to null
     }

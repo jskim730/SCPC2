@@ -345,7 +345,10 @@ class ProductSurface(
     fun startNewOrder(restaurant: RestaurantDefinition): StepOutcome {
         return step(
             operation = ProductionCore.Op.RESET_AND_START,
-            roles = roles(Role.PRIMARY_GOAL to GOAL_VALID_DRAFT),
+            roles = roles(
+                Role.PRIMARY_GOAL to GOAL_VALID_DRAFT,
+                Role.TARGET_ENTITY to restaurant.entityToken,
+            ),
             newSession = true,
             draftConfiguration = draftConfiguration(restaurant, emptyList()),
         )

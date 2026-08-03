@@ -49,6 +49,28 @@ class ProbeOperationContractTest {
     }
 
     @Test
+    fun `reset establishes the supplied goal and target for the new run`() {
+        val harness = ProbeRunHarness()
+        val token = TokenSet("reset-context")
+
+        harness.step(
+            Op.RESET_AND_START,
+            "S1",
+            mapOf(
+                Role.PRIMARY_GOAL to token.goal,
+                Role.TARGET_ENTITY to token.target,
+            ),
+        )
+
+        assertEquals(token.goal, harness.state().goalId)
+        assertEquals(token.target, harness.state().targetEntityId)
+        assertTrue(
+            "the online target is available to the new run's product surface",
+            token.target in harness.state().cachedCatalogEntities,
+        )
+    }
+
+    @Test
     fun `process epoch increases only after the process really restarts`() {
         val (harness, _) = run()
         val killIndex = harness.steps.indexOfFirst { it.operation == Op.PROCESS_KILL_RELAUNCH }

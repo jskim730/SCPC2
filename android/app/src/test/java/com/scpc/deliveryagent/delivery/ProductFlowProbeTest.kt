@@ -65,6 +65,19 @@ class ProductFlowProbeTest {
     }
 
     @Test
+    fun `the first restaurant choice immediately becomes the active recommendation target`() {
+        val surface = surface()
+
+        surface.startNewOrder(daon)
+
+        assertEquals(daon.entityToken, surface.state().targetEntityId)
+        assertTrue(
+            "choosing a restaurant leaves menu candidates available before any chat input",
+            Recommender(catalog).candidates(surface.state(), daon).isNotEmpty(),
+        )
+    }
+
+    @Test
     fun `E1 completes an order and prices it from the catalog`() {
         val surface = surface()
         walkEpisodeOne(surface)

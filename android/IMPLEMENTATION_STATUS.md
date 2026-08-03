@@ -9,10 +9,10 @@
 
 | 항목 | 상태 |
 |---|---|
-| JVM 단위 테스트 | **150개 전부 통과** (debug·release 각각, emulator 불필요) |
+| JVM 단위 테스트 | **152개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
-| 기기 실행 검증 | **미실행.** SDK·API 35 image·WHPX 사용 가능 확인. 8/3 실기기(공기계)에 debug APK 수동 설치로 UI 육안 확인 시작 |
+| 기기 실행 검증 | **API 35 x86_64 에뮬레이터 기본 흐름 확인.** debug APK 설치·첫 식당 선택·즉시 메뉴 추천 카드 표시 확인. 전체 E1–E4 육안 완주는 남음 |
 | 미구현·보류 항목 | 실제 network 감지, 진짜 multi-select — 아래 전용 절 참조 |
 | 공식 Runner 13-step 완주 | **미실행.** release 서명 뒤 수행 |
 | release 서명 설정 | **배선 완료·검증됨.** keystore 생성만 남음 (8/4 노트북에서 1회) |
@@ -311,7 +311,7 @@ slot을 제공할 때만 식당을 넘는다.
 품절·가격변경은 코드 분기가 아니라 `catalog_events`다. `ProductSurface.applyCatalogEvent`가 그 slot
 하나에만 더 높은 authority로 전달하므로 본 메뉴와 독립 option은 보존된다.
 
-## 검증 — JVM 150개, emulator 불필요
+## 검증 — JVM 152개, emulator 불필요
 
 | 파일 | 개수 | 내용 |
 |---|---:|---|
@@ -559,3 +559,4 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 | 2026-08-03 | UI 크래시 경로 전수 차단(freeze 전 최우선 3/3): `act`/try-catch 밖 변경 호출 9곳(Main 4·Memory 5, 공통 `guarded` 헬퍼) 감싸기 — 낡은 항목·중복 탭이 크래시 대신 Toast. `answerScope`는 실제 저장된 값만 대화에 말함. `clearTransientScreenState()`로 session 전환 5곳(식당 chip·대본 버튼)에서 후보·범위 질문·리뷰 진행 상태 초기화. JVM 144개 통과 |
 | 2026-08-03 | 채팅방형 화면 구성(표시 전용, 제품 결정): 입력창을 메신저처럼 화면 하단에 고정하고 스레드는 위에서 스크롤. 스레드 순서를 대화 흐름대로 재배치(대화 → 질문 → 추천 후보 → 주문 초안서 → 주문 완료 후 평가 → 상황, 대본·network·검증 도구는 아래로), 빈 초안 placeholder 제거. 흐름 자체(자연어 → 후보 → 선택 → 항목별 초안 → 빈 칸 질문 → 확정 → 평가 요청 → 리뷰 범위 승인)는 기존 판단 경로 그대로다. JVM 144개 통과 |
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
+| 2026-08-03 | 에뮬레이터에서 첫 식당 선택 뒤 추천 카드가 나오지 않던 결함 수정. `RESET_AND_START`가 이전 run을 비운 뒤 새 step의 목표·대상 context를 적용하도록 순서를 고치고, `startNewOrder`가 `TARGET_ENTITY`를 명시한다. reset 직후 context와 채팅 입력 전 추천 후보를 고정하는 회귀 테스트 2개 추가. debug·release JVM 각 152개 및 `assembleDebug` 통과 |
