@@ -183,7 +183,12 @@ object Ui {
      * spoken description of the whole bubble, which always begins with the
      * speaker so a screen reader announces who said it.
      */
-    fun chatLine(context: Context, speaker: String, text: String): LinearLayout {
+    fun chatLine(
+        context: Context,
+        speaker: String,
+        text: String,
+        showName: Boolean = true,
+    ): LinearLayout {
         val mine = speaker.startsWith("나")
         val radius = dp(context, 16).toFloat()
         val tail = dp(context, 4).toFloat()
@@ -214,7 +219,10 @@ object Ui {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             )
-            if (!mine) {
+            // A run of turns from the same speaker is named once, the way a
+            // messenger does it. The spoken description above still carries the
+            // speaker on every bubble.
+            if (!mine && showName) {
                 addView(
                     TextView(context).apply {
                         this.text = speaker.trimEnd(':', ' ')
@@ -315,42 +323,96 @@ object Ui {
         editLabel: String,
         onEdit: (() -> Unit)?,
     ): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(context, 4), 0, dp(context, 4))
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(context, 5), 0, dp(context, 5))
+        // Name, value and the control share one line; where the value came from
+        // goes underneath at a smaller size. Provenance is often a sentence, and
+        // squeezing it into a third of the width wrapped every row.
         addView(
-            TextView(context).apply {
-                text = label
-                textSize = 14f
-                setTypeface(typeface, Typeface.BOLD)
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(
+                    TextView(context).apply {
+                        text = label
+                        textSize = 14f
+                        setTypeface(typeface, Typeface.BOLD)
+                    },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3f),
+                )
+                addView(
+                    TextView(context).apply {
+                        text = value
+                        textSize = 14f
+                    },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 5f),
+                )
+                if (onEdit != null) {
+                    addView(
+                        Button(context).apply {
+                            text = editLabel
+                            contentDescription = "$label $editLabel"
+                            textSize = 12f
+                            minWidth = dp(context, 56)
+                            minHeight = dp(context, 44)
+                            setPadding(dp(context, 6), 0, dp(context, 6), 0)
+                            setOnClickListener { onEdit() }
+                        },
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ),
+                    )
+                }
             },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3f),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
         )
-        addView(
-            TextView(context).apply {
-                text = if (status.isEmpty()) value else "$value\n$status"
-                textSize = 14f
-            },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 4f),
-        )
-        if (onEdit != null) {
+        if (status.isNotEmpty()) {
             addView(
-                Button(context).apply {
-                    text = editLabel
-                    contentDescription = "$label $editLabel"
+                TextView(context).apply {
+                    text = status
                     textSize = 12f
-                    minWidth = dp(context, 64)
-                    minHeight = dp(context, 44)
-                    setPadding(dp(context, 8), 0, dp(context, 8), 0)
-                    setOnClickListener { onEdit() }
+                    setPadding(0, dp(context, 1), 0, 0)
                 },
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
             )
         }
     }
+
+    /** Where the order stands and the one thing to do next, set apart from the thread. */
+    fun banner(context: Context, path: String, next: String): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 12), dp(context, 10), dp(context, 12), dp(context, 10))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#E8F0ED"))
+                cornerRadius = dp(context, 10).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(context, 6)
+                bottomMargin = dp(context, 6)
+            }
+            addView(
+                TextView(context).apply {
+                    text = path
+                    textSize = 13f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#173F35"))
+                },
+            )
+            addView(
+                TextView(context).apply {
+                    text = next
+                    textSize = 14f
+                    setPadding(0, dp(context, 4), 0, 0)
+                },
+            )
+        }
 
     fun divider(context: Context): View = View(context).apply {
         setBackgroundColor(Color.LTGRAY)

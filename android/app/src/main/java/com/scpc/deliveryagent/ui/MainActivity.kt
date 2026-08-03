@@ -274,8 +274,8 @@ class MainActivity : Activity() {
         content.addView(
             Ui.body(
                 this,
-                "식당·메뉴·가격·재고·예상시간·주문은 모두 이 앱 안의 합성 데이터입니다. " +
-                    "실제 주문·결제·외부 계정은 사용하지 않습니다.",
+                "식당·메뉴·가격·주문은 모두 앱 안의 합성 데이터이며, " +
+                    "실제 주문·결제·계정을 사용하지 않습니다.",
             ),
         )
 
@@ -318,9 +318,8 @@ class MainActivity : Activity() {
             else -> 3
         }
         val path = listOf("식당", "메뉴", "옵션 확인", "확정", "평가")
-            .mapIndexed { index, name -> if (index == stage) "●$name" else name }
-            .joinToString(" → ")
-        content.addView(Ui.mono(this, path))
+            .mapIndexed { index, name -> if (index == stage) "● $name" else name }
+            .joinToString("  ›  ")
         val next = when (stage) {
             0 -> "아래에서 주문할 식당을 골라 주세요."
             1 -> "먹고 싶은 것과 조건을 말해 주세요. 추천 후보에서 메뉴를 담습니다."
@@ -328,7 +327,7 @@ class MainActivity : Activity() {
             3 -> "확인이 끝났습니다. 주문서의 \"이대로 주문하기\"를 누르면 기록됩니다."
             else -> "지난 주문이 어땠는지 평가를 남길 수 있습니다."
         }
-        content.addView(Ui.body(this, "다음 할 일: $next"))
+        content.addView(Ui.banner(this, path, next))
         // The confirm button lives on the draft card, where the order is read.
     }
 
@@ -360,8 +359,12 @@ class MainActivity : Activity() {
         val header = Ui.section(this, "대화")
         conversationAnchor = header
         content.addView(header)
+        var previousSpeaker = ""
         chat.takeLast(MAX_CHAT_LINES).forEach { line ->
-            content.addView(Ui.chatLine(this, line.speaker, line.text))
+            content.addView(
+                Ui.chatLine(this, line.speaker, line.text, showName = line.speaker != previousSpeaker),
+            )
+            previousSpeaker = line.speaker
         }
     }
 
@@ -763,7 +766,10 @@ class MainActivity : Activity() {
             card.addView(
                 Ui.editableRow(
                     context = this,
-                    label = catalog.slotLabel(field.slotId),
+                    // Inside a line's block the "항목 N ·" prefix is already in the
+                    // heading above, and repeating it wrapped every row label.
+                    label = catalog.baseSlotOfLineSlotId(field.slotId)?.label
+                        ?: catalog.slotLabel(field.slotId),
                     value = field.displayValue(catalog, pricing, state) + amount,
                     status = field.statusLine(state),
                     editLabel = if (open) "닫기" else "변경",
@@ -791,6 +797,8 @@ class MainActivity : Activity() {
                 renderFieldRow(field)
             }
             if (restaurant != null) {
+                // Four equal chips left "이 항목 빼기" too narrow to fit on one
+                // line, so the quantities and the removal take a row each.
                 card.addView(
                     Ui.chipRow(
                         this,
@@ -798,12 +806,18 @@ class MainActivity : Activity() {
                             "수량 ${count}개" to {
                                 act { it.setQuantity(restaurant, line.lineId, "qty.$count") }
                             }
-                        } + (
+                        },
+                    ),
+                )
+                card.addView(
+                    Ui.chipRow(
+                        this,
+                        listOf(
                             "이 항목 빼기" to {
                                 chat += ChatLine("나:", "$menuLabel 빼기")
                                 actQuiet { it.removeLine(restaurant, line.lineId) }
-                            }
-                            ),
+                            },
+                        ),
                     ),
                 )
             }
