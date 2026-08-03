@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
@@ -26,6 +27,7 @@ import com.scpc.deliveryagent.delivery.Recommender
 import com.scpc.deliveryagent.delivery.ReviewCandidate
 import com.scpc.deliveryagent.delivery.RestaurantDefinition
 import com.scpc.deliveryagent.delivery.SlotDefinition
+import com.scpc.deliveryagent.delivery.SlotKind
 import com.scpc.deliveryagent.delivery.Slots
 import com.scpc.deliveryagent.delivery.SyntheticCatalog
 import com.scpc.deliveryagent.delivery.ValueScope
@@ -64,6 +66,11 @@ class MainActivity : Activity() {
     private var lastDecision = "-"
     private var showDiagnostics = false
 
+    /** Which panel covers the thread, if any. */
+    private enum class Panel { DRAFT, MENU, NETWORK }
+
+    private var panel: Panel? = null
+
     /** The draft row whose value chips are currently open, if any. */
     private var editingFieldId: String? = null
 
@@ -71,6 +78,10 @@ class MainActivity : Activity() {
     private var scrollChatIntoView = false
     private var conversationAnchor: View? = null
     private lateinit var scroller: ScrollView
+    private lateinit var root: FrameLayout
+    private lateinit var panelHost: FrameLayout
+    private lateinit var barHost: LinearLayout
+    private lateinit var appBarHost: FrameLayout
 
     private val catalog: SyntheticCatalog get() = Production.catalog(this)
     private val pricing: DraftPricing get() = DraftPricing(catalog)
@@ -97,39 +108,99 @@ class MainActivity : Activity() {
         reviewTargetToken = null
     }
 
+    /**
+     * A messenger's frame: a header that says where the order stands, a thread
+     * that scrolls, the order summary and the message field pinned at the
+     * bottom, and one layer above all of it for whatever panel is open.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        content = Ui.column(this)
+        content = Ui.column(this).apply {
+            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 10), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 12))
+        }
         scroller = Ui.scroller(this, content)
-        // Chat-room form: the thread scrolls, the message field stays pinned at
-        // the bottom of the screen the way every messenger holds it.
+        barHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
         val inputBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.WHITE)
             setPadding(
-                Ui.dp(this@MainActivity, 16),
-                Ui.dp(this@MainActivity, 4),
-                Ui.dp(this@MainActivity, 16),
+                Ui.dp(this@MainActivity, 10),
                 Ui.dp(this@MainActivity, 8),
+                Ui.dp(this@MainActivity, 10),
+                Ui.dp(this@MainActivity, 10),
             )
             addView(
                 Ui.inputRow(
                     context = this@MainActivity,
-                    hint = "예: 2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘",
+                    hint = "메시지 입력",
                     sendLabel = "보내기",
                     onSend = ::onSend,
                 ),
             )
         }
-        val root = LinearLayout(this).apply {
+
+        appBarHost = FrameLayout(this)
+        val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor(Ui.CHAT_BG))
+            addView(appBarHost)
             addView(
                 scroller,
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
             )
+            addView(barHost)
             addView(inputBar)
+        }
+
+        panelHost = FrameLayout(this)
+        root = FrameLayout(this).apply {
+            addView(
+                column,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            addView(
+                panelHost,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
         }
         setContentView(root)
         render()
+    }
+
+    private fun appBar(): View = Ui.appBar(
+        context = this,
+        title = currentRestaurant()?.name ?: "오늘의 주문",
+        subtitle = if (currentRestaurant() == null) {
+            "합성 데이터 · 실제 결제 없음"
+        } else {
+            "배달지 ${catalog.deliveryAlias} · ${surface.state().network.name}"
+        },
+        menuLabel = "메뉴 열기",
+        onMenu = { openPanel(Panel.MENU) },
+    )
+
+    private fun openPanel(next: Panel) {
+        panel = next
+        editingFieldId = null
+        render()
+    }
+
+    private fun closePanel() {
+        panel = null
+        editingFieldId = null
+        render()
+    }
+
+    /** The panel is the frontmost thing on screen, so back closes it first. */
+    override fun onBackPressed() {
+        if (panel != null) closePanel() else super.onBackPressed()
     }
 
     override fun onResume() {
@@ -268,78 +339,54 @@ class MainActivity : Activity() {
         val state = surface.state()
         EvaluationNotification.sync(this, surface.pendingEvaluationRequest())
         openQuestions = AsprEngine.openConfirmationIds(state)
+
+        appBarHost.removeAllViews()
+        appBarHost.addView(appBar())
         content.removeAllViews()
 
-        content.addView(Ui.title(this, "오늘의 주문"))
-        content.addView(
-            Ui.body(
-                this,
-                "식당·메뉴·가격·주문은 모두 앱 안의 합성 데이터이며, " +
-                    "실제 주문·결제·계정을 사용하지 않습니다.",
-            ),
-        )
-
-        renderStage(state)
-
-        // The thread reads in conversation order: what was said, what the agent
-        // asks now, what it proposes, the draft being filled, then the review
-        // once an order exists. Demo and verification tools sit below the fold.
-        renderRestaurantChoice()
+        // The thread reads as a conversation: what was said, what the agent
+        // proposes, and the one thing it is asking about right now.
         renderConversation()
-        renderQuestions(state)
+        renderRestaurantChoice()
         renderCandidates()
-        renderDraft(state)
+        renderNextQuestion(state)
         renderReview(state)
         renderNextOrder(state)
-        renderSituation(state)
-        renderEnvironment()
-        renderDiagnostics(state)
-        renderNavigation()
+
+        barHost.removeAllViews()
+        renderOrderBar(state)
+
+        panelHost.removeAllViews()
+        when (panel) {
+            Panel.DRAFT -> panelHost.addView(draftPanel(state))
+            Panel.MENU -> panelHost.addView(menuPanel())
+            Panel.NETWORK -> panelHost.addView(networkPanel())
+            null -> Unit
+        }
 
         if (scrollChatIntoView) {
             scrollChatIntoView = false
-            val anchor = conversationAnchor
-            if (anchor != null) scroller.post { scroller.smoothScrollTo(0, anchor.top) }
+            scroller.post { scroller.fullScroll(View.FOCUS_DOWN) }
         }
-    }
-
-    /**
-     * Where the order stands and the one thing to do next. The five stages are
-     * derived from the same state the sections below render, so this banner can
-     * never disagree with them.
-     */
-    private fun renderStage(state: ProductionState) {
-        val restaurant = currentRestaurant()
-        val stage = when {
-            restaurant == null -> 0
-            surface.pendingEvaluationRequest() -> 4
-            surface.lines().isEmpty() -> 1
-            openQuestions.isNotEmpty() -> 2
-            else -> 3
-        }
-        val path = listOf("식당", "메뉴", "옵션 확인", "확정", "평가")
-            .mapIndexed { index, name -> if (index == stage) "● $name" else name }
-            .joinToString("  ›  ")
-        val next = when (stage) {
-            0 -> "아래에서 주문할 식당을 골라 주세요."
-            1 -> "먹고 싶은 것과 조건을 말해 주세요. 추천 후보에서 메뉴를 담습니다."
-            2 -> "확인이 필요한 항목 ${openQuestions.size}개에 답해 주세요."
-            3 -> "확인이 끝났습니다. 주문서의 \"이대로 주문하기\"를 누르면 기록됩니다."
-            else -> "지난 주문이 어땠는지 평가를 남길 수 있습니다."
-        }
-        content.addView(Ui.banner(this, path, next))
-        // The confirm button lives on the draft card, where the order is read.
     }
 
     /** Every synthetic restaurant, offered whenever no order is open yet. */
     private fun renderRestaurantChoice() {
         if (currentRestaurant() != null) return
-        content.addView(Ui.chatLine(this, "에이전트:", "어느 식당에서 주문할까요?"))
         content.addView(
-            Ui.chipRow(
+            Ui.chatLine(
                 this,
-                catalog.restaurants.map { restaurant ->
-                    restaurant.name to {
+                "에이전트:",
+                "안녕하세요. 어디서 주문할까요?\n먹고 싶은 것을 바로 말씀하셔도 됩니다.",
+            ),
+        )
+        content.addView(
+            Ui.agentCard(
+                context = this,
+                question = "식당 고르기",
+                hint = "6곳 모두 합성 실험 매장입니다. 실제 주문·결제는 일어나지 않습니다.",
+                chips = catalog.restaurants.map { restaurant ->
+                    Ui.Chip(label = restaurant.name) {
                         clearTransientScreenState()
                         chat += ChatLine("에이전트:", "${restaurant.name}으로 새 주문을 시작했습니다.")
                         act { it.startNewOrder(restaurant) }
@@ -350,15 +397,6 @@ class MainActivity : Activity() {
     }
 
     private fun renderConversation() {
-        if (chat.isEmpty()) {
-            content.addView(
-                Ui.body(this, "무엇을 먹고 싶은지, 예산과 조건을 아래 입력창에 그대로 말해 주세요."),
-            )
-            return
-        }
-        val header = Ui.section(this, "대화")
-        conversationAnchor = header
-        content.addView(header)
         var previousSpeaker = ""
         chat.takeLast(MAX_CHAT_LINES).forEach { line ->
             content.addView(
@@ -368,48 +406,72 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun renderQuestions(state: ProductionState) {
+    /**
+     * One question at a time.
+     *
+     * The draft usually has several blanks at once, but a person answers them
+     * one after another, and a card per answer keeps the thread readable and
+     * leaves each choice in the transcript. The counter says how many are left
+     * so the run of questions never feels open-ended.
+     */
+    private fun renderNextQuestion(state: ProductionState) {
         val restaurant = currentRestaurant() ?: return
-        // The agent's open questions are turns in the conversation, so they are
-        // spoken in a bubble and answered by the chips right under them.
+
         if (pendingScope.isNotEmpty()) {
-            content.addView(Ui.chatLine(this, "에이전트:", "이 값을 다음 주문에도 쓸까요?"))
+            val value = pendingScope.first()
             content.addView(
-                Ui.chipRow(
-                    this,
-                    listOf(
-                        "이번 주문만" to { answerScope(remember = false) },
-                        "앞으로도 기억" to { answerScope(remember = true) },
+                Ui.agentCard(
+                    context = this,
+                    question = "${Particles.withObj(catalog.slot(value.scopeToken).label)} 다음에도 쓸까요?",
+                    hint = catalog.valueLabel(value.valueToken) + " · 지금 정한 값입니다.",
+                    chips = listOf(
+                        Ui.Chip(label = "이번 주문만") { answerScope(remember = false) },
+                        Ui.Chip(label = "앞으로도 기억") { answerScope(remember = true) },
                     ),
+                    footnote = "기억하면 다음 주문의 같은 항목에 자동으로 채워집니다.",
                 ),
             )
+            return
         }
-        if (openQuestions.isEmpty()) return
-        openQuestions.forEach { fieldId ->
-            val field = state.fields[fieldId] ?: return@forEach
-            val slot = catalog.slotOfFieldSlotId(field.slotId)
-                ?: catalog.baseSlotOfLineSlotId(field.slotId)
-                ?: return@forEach
-            content.addView(
-                Ui.chatLine(
-                    this,
-                    "에이전트:",
-                    "${Particles.withObj(catalog.slotLabel(field.slotId))} 정해 주세요.",
-                ),
-            )
-            val choices = catalog.valuesFor(restaurant, slot.scopeToken)
-                .filter { it.inStock }
-                .map { option ->
-                    val label = if (option.priceDelta > 0) {
-                        "${option.label} ${pricing.formatAmount(option.priceDelta)}"
+
+        val total = openQuestions.size
+        if (total == 0) return
+        val fieldId = openQuestions.first()
+        val field = state.fields[fieldId] ?: return
+        val slot = catalog.slotOfFieldSlotId(field.slotId)
+            ?: catalog.baseSlotOfLineSlotId(field.slotId)
+            ?: return
+        val chips = catalog.valuesFor(restaurant, slot.scopeToken)
+            .filter { it.inStock }
+            .map { option ->
+                Ui.Chip(
+                    label = option.label,
+                    sub = if (option.priceDelta > 0) {
+                        "+${pricing.formatAmount(option.priceDelta)}"
                     } else {
-                        option.label
-                    }
-                    label to { answerField(field, option.token) }
-                }
-            if (choices.isNotEmpty()) content.addView(Ui.chipRow(this, choices))
-        }
+                        ""
+                    },
+                ) { answerField(field, option.token) }
+            }
+        if (chips.isEmpty()) return
+        content.addView(
+            Ui.agentCard(
+                context = this,
+                question = "${Particles.withObj(questionLabel(field))} 정해 주세요.",
+                hint = if (total == 1) "마지막 확인입니다." else "1 / $total · 하나씩 여쭤볼게요.",
+                chips = chips,
+                footnote = if (slot.kind == SlotKind.MENU_OPTION) {
+                    "이 선택은 이번 주문에 적용됩니다."
+                } else {
+                    ""
+                },
+            ),
+        )
     }
+
+    /** The option's own name; the line it belongs to is already in the draft. */
+    private fun questionLabel(field: DraftField): String =
+        catalog.baseSlotOfLineSlotId(field.slotId)?.label ?: catalog.slotLabel(field.slotId)
 
     /**
      * What the agent proposes right now.
@@ -430,31 +492,32 @@ class MainActivity : Activity() {
             }
         }
         if (shown.isEmpty()) return
-        content.addView(Ui.chatLine(this, "에이전트:", "이런 메뉴는 어떠세요?"))
+        val card = Ui.agentCard(
+            context = this,
+            question = "이런 메뉴는 어떠세요?",
+            hint = "조건과 저장된 취향에 맞춘 순서입니다.",
+            chips = emptyList(),
+        )
         shown.forEach { candidate ->
-            content.addView(
-                Ui.candidateCard(
+            card.addView(
+                Ui.candidateRow(
                     context = this,
-                    title = candidate.label,
-                    detail = buildString {
+                    name = candidate.label,
+                    meta = buildString {
                         append(pricing.formatAmount(candidate.amount))
                         append(" · ${candidate.estimateMinutes}분")
                         // The user's own past ratings of this exact menu. They order
                         // what conditions and preferences leave tied, never more.
-                        if (candidate.rating.count > 0) {
-                            append(" · ${candidate.rating.label()}")
-                            candidate.rating.breakdown().takeIf { it.isNotEmpty() }
-                                ?.let { append(" — $it") }
-                        } else {
-                            append(" · 내 평점 없음")
-                        }
+                        if (candidate.rating.count > 0) append(" · ${candidate.rating.label()}")
                         candidate.blockedBy?.let { append(" · 제외: $it") }
                     },
                     reasons = candidate.reasons.joinToString(" · ") { "${it.badge} ${it.detail}" },
-                    action = if (candidate.offerable) {
-                        "이걸로 하기" to {
-                            chat += ChatLine("나:", "메뉴: ${candidate.label}")
+                    actionLabel = "담기",
+                    onTap = if (candidate.offerable) {
+                        {
+                            chat += ChatLine("나:", "${candidate.label} 담기")
                             candidates = emptyList()
+                            scrollChatIntoView = true
                             act { it.addLine(restaurant, candidate.valueToken) }
                         }
                     } else {
@@ -463,6 +526,27 @@ class MainActivity : Activity() {
                 ),
             )
         }
+        content.addView(card)
+    }
+
+    /** The order summary, always within reach above the message field. */
+    private fun renderOrderBar(state: ProductionState) {
+        if (currentRestaurant() == null) return
+        val lines = surface.lines()
+        if (lines.isEmpty() && state.fields.isEmpty()) return
+        val total = pricing.total(state)
+        barHost.addView(
+            Ui.orderBar(
+                context = this,
+                count = lines.size,
+                summary = if (openQuestions.isEmpty()) {
+                    "주문서 ${pricing.formatAmount(total)} · 확인 완료"
+                } else {
+                    "주문서 ${pricing.formatAmount(total)} · 확인 ${openQuestions.size}건 남음"
+                },
+                onOpen = { openPanel(Panel.DRAFT) },
+            ),
+        )
     }
 
 
@@ -476,67 +560,47 @@ class MainActivity : Activity() {
         val restaurant = currentRestaurant() ?: return
         if (state.actions.isEmpty()) return
 
-        content.addView(Ui.divider(this))
-        content.addView(Ui.section(this, "지난 주문 평가"))
-
         if (surface.pendingEvaluationRequest()) {
             content.addView(
-                Ui.body(this, "지난 주문 평가 요청이 도착했습니다. 별점과 한 줄 평가를 남겨 주세요."),
+                Ui.chatLine(this, "에이전트:", "식사는 어떠셨어요? 별점과 한 줄 평가를 남겨 주세요."),
             )
         }
 
-        if (EvaluationNotification.hasPermission(this)) {
-            content.addView(
-                Ui.body(
-                    this,
-                    "평가 알림: 허용됨 · 알림은 보조 표시이며 이 화면의 평가 요청이 정본입니다.",
-                ),
-            )
-        } else {
-            content.addView(
-                Ui.body(
-                    this,
-                    "평가 알림: 허용 안 됨 · 주문 기록과 이 화면의 평가 요청은 그대로 유지됩니다.",
-                ),
-            )
-            content.addView(
-                Ui.button(this, "평가 알림 허용 요청") {
-                    EvaluationNotification.requestPermission(this)
-                },
-            )
-        }
-
+        val rated = reviewRating
         content.addView(
-            Ui.chipRow(
-                this,
-                surface.ratingOptions().map { rating ->
-                    val chosen = if (reviewRating?.token == rating.token) " ✓" else ""
-                    (rating.label + chosen) to {
+            Ui.agentCard(
+                context = this,
+                question = "지난 주문 평가",
+                hint = restaurant.name + (reviewTargetToken?.let { " · " + catalog.valueLabel(it) } ?: ""),
+                chips = surface.ratingOptions().map { rating ->
+                    Ui.Chip(label = rating.label, selected = rated?.token == rating.token) {
                         reviewRating = rating
                         render()
                     }
                 },
-            ),
-        )
-        content.addView(
-            Ui.inputRow(
-                context = this,
-                hint = "예: 국물은 괜찮았는데 간이 좀 셌어",
-                sendLabel = "평가 남기기",
-                onSend = { text -> onReview(restaurant, text) },
-            ),
+            ).also { card ->
+                card.addView(
+                    Ui.inputRow(
+                        context = this,
+                        hint = "예: 국물은 괜찮았는데 간이 좀 셌어",
+                        sendLabel = "남기기",
+                        onSend = { text -> onReview(restaurant, text) },
+                    ),
+                )
+            },
         )
 
         if (reviewNeedsTarget) {
-            content.addView(Ui.body(this, "어느 메뉴에 대한 평가인가요?"))
             val id = reviewId
             if (id != null) {
                 content.addView(
-                    Ui.chipRow(
-                        this,
-                        surface.lines().mapNotNull { line ->
+                    Ui.agentCard(
+                        context = this,
+                        question = "어느 메뉴에 대한 평가인가요?",
+                        hint = "대상이 정해져야 평점과 취향 후보를 그 메뉴에 연결합니다.",
+                        chips = surface.lines().mapNotNull { line ->
                             val menuToken = line.menuValueToken ?: return@mapNotNull null
-                            catalog.valueLabel(menuToken) to {
+                            Ui.Chip(label = catalog.valueLabel(menuToken)) {
                                 try {
                                     reviewOffers = surface.setReviewTarget(restaurant, id, menuToken)
                                     reviewTargetToken = menuToken
@@ -557,29 +621,21 @@ class MainActivity : Activity() {
         }
 
         if (reviewOffers.isNotEmpty() && !reviewNeedsTarget) {
-            content.addView(
-                Ui.body(
-                    this,
-                    "이 내용을 다음부터 초안에 적용할까요? 적용 범위를 정해 주세요. " +
-                        "동의한 범위에만 저장됩니다.",
-                ),
-            )
             reviewOffers.forEach { offer ->
                 val slot = catalog.slot(offer.slotToken)
-                content.addView(
-                    Ui.body(
-                        this,
-                        "'${offer.matchedText}' → 다음에는 ${Particles.withObj(slot.label)} " +
-                            "${Particles.withInto(catalog.valueLabel(offer.impliesValue))} 적용",
-                    ),
-                )
-                val choices = surface
+                val chips = surface
                     .reviewScopeChoices(restaurant, offer, reviewTargetToken)
-                    .map { level -> scopeLevelLabel(level) to { acceptReviewOffer(offer, level) } }
+                    .map { level ->
+                        Ui.Chip(label = scopeLevelLabel(level)) { acceptReviewOffer(offer, level) }
+                    } + Ui.Chip(label = "저장하지 않음") { declineReviewOffer(offer) }
                 content.addView(
-                    Ui.chipRow(
-                        this,
-                        choices + ("저장하지 않음" to { declineReviewOffer(offer) }),
+                    Ui.agentCard(
+                        context = this,
+                        question = "다음부터 ${Particles.withObj(slot.label)} " +
+                            "${Particles.withInto(catalog.valueLabel(offer.impliesValue))} 해 드릴까요?",
+                        hint = "'${offer.matchedText}'라고 하셔서요. 어디까지 적용할지 골라 주세요.",
+                        chips = chips,
+                        footnote = "고른 범위에만 저장하고, 다른 범위는 건드리지 않습니다.",
                     ),
                 )
             }
@@ -687,14 +743,17 @@ class MainActivity : Activity() {
     private fun renderNextOrder(state: ProductionState) {
         if (state.actions.isEmpty()) return
         if (currentRestaurant() == null) return
-        content.addView(Ui.chatLine(this, "에이전트:", "다음 주문을 시작할까요?"))
+        if (reviewOffers.isNotEmpty() || reviewNeedsTarget) return
         content.addView(
-            Ui.chipRow(
-                this,
-                catalog.restaurants.map { restaurant ->
-                    restaurant.name to {
+            Ui.agentCard(
+                context = this,
+                question = "다음 주문을 시작할까요?",
+                hint = "새 session이 열립니다. 이번 주문에만 적용한 값은 따라오지 않고, 저장한 취향은 그대로 쓰입니다.",
+                chips = catalog.restaurants.map { restaurant ->
+                    Ui.Chip(label = restaurant.name) {
                         clearTransientScreenState()
                         chat += ChatLine("나:", "${restaurant.name}에서 새로 주문할게")
+                        scrollChatIntoView = true
                         act { it.nextOrderSession(restaurant) }
                     }
                 },
@@ -702,94 +761,43 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun renderSituation(state: ProductionState) {
-        content.addView(Ui.section(this, "현재 상황"))
-        content.addView(
-            Ui.body(
-                this,
-                buildString {
-                    val restaurant = currentRestaurant()
-                    append("주문 식당: ${restaurant?.name ?: "미선택"}")
-                    if (restaurant != null) {
-                        // The user's own past ratings here, for comparison only.
-                        val tally = Recommender(catalog).restaurantTally(state, restaurant)
-                        if (tally.count > 0) append(" · ${tally.label()}")
-                    }
-                    append("\n")
-                    append("배달지: ${catalog.deliveryAlias}\n")
-                    append("network: ${networkLabel(state)}")
-                },
-            ),
-        )
-    }
-
     /**
-     * The run's verification identifiers, folded away. A judge or the probe
-     * narrative needs them; a person ordering dinner does not.
-     */
-    private fun renderDiagnostics(state: ProductionState) {
-        content.addView(Ui.divider(this))
-        content.addView(
-            Ui.button(this, if (showDiagnostics) "검증 정보 접기" else "검증 정보 펼치기 (심사용)") {
-                showDiagnostics = !showDiagnostics
-                render()
-            },
-        )
-        if (!showDiagnostics) return
-        content.addView(
-            Ui.mono(
-                this,
-                buildString {
-                    append("주문 session: ${state.sessionLabel.ifEmpty { "없음" }}\n")
-                    append("실행 세대(process epoch): ${state.processEpoch}\n")
-                    append("비교 arm: ${armLabel()}\n")
-                    append("마지막 판단: $lastDecision\n")
-                    append("합성 catalog snapshot: ${catalog.snapshotDigest.take(16)}")
-                },
-            ),
-        )
-    }
-
-    /**
-     * The order draft, delivered into the thread as one card.
+     * The draft, raised over the thread.
      *
-     * Every line of it can be acted on where it is read: a row shows what it
-     * says now and opens the values this restaurant actually offers when the
-     * user asks to change it. Blanks and filled values use the same control, so
-     * filling one in and correcting one are the same gesture.
+     * A person checks the order when they are about to place it, not at the
+     * point in the conversation where each line happened to be added, so the
+     * draft lives one tap from anywhere rather than scrolling away.
      */
-    private fun renderDraft(state: ProductionState) {
+    private fun draftPanel(state: ProductionState): View {
         val restaurant = currentRestaurant()
-        val lines = surface.lines()
-        // No empty placeholder card: before anything is in the draft, the stage
-        // banner already says what to do, and the thread stays a conversation.
-        if (state.fields.isEmpty() && lines.isEmpty()) return
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                Ui.dp(this@MainActivity, 16),
+                0,
+                Ui.dp(this@MainActivity, 16),
+                Ui.dp(this@MainActivity, 8),
+            )
+        }
 
-        content.addView(Ui.chatLine(this, "에이전트:", "지금까지의 주문서입니다."))
-        val card = Ui.card(this)
-        content.addView(card)
-        card.addView(Ui.section(this, "주문서 초안"))
-
-        fun renderFieldRow(field: DraftField) {
+        fun addRow(field: DraftField, label: String) {
             val entry = catalog.value(field.value)
             val amount = if (entry != null && entry.priceDelta > 0) {
-                " · ${pricing.formatAmount(entry.priceDelta)}"
+                " (+${pricing.formatAmount(entry.priceDelta)})"
             } else {
                 ""
             }
             val choices = editChoices(field, restaurant)
             val open = editingFieldId == field.fieldId
-            card.addView(
-                Ui.editableRow(
+            body.addView(
+                Ui.draftRow(
                     context = this,
-                    // Inside a line's block the "항목 N ·" prefix is already in the
-                    // heading above, and repeating it wrapped every row label.
-                    label = catalog.baseSlotOfLineSlotId(field.slotId)?.label
-                        ?: catalog.slotLabel(field.slotId),
+                    label = label,
                     value = field.displayValue(catalog, pricing, state) + amount,
-                    status = field.statusLine(state),
-                    editLabel = if (open) "닫기" else "변경",
-                    onEdit = if (choices.isEmpty()) {
+                    source = field.statusLine(state),
+                    needsUser = field.status != FieldStatus.CONFIRMED &&
+                        field.status != FieldStatus.AUTO_APPLIED,
+                    onChange = if (choices.isEmpty()) {
                         null
                     } else {
                         {
@@ -799,47 +807,39 @@ class MainActivity : Activity() {
                     },
                 ),
             )
-            if (open && choices.isNotEmpty()) card.addView(Ui.chipRow(this, choices))
+            if (open && choices.isNotEmpty()) {
+                body.addView(
+                    Ui.chipFlow(this, Ui.cardContentWidth(this), choices),
+                )
+            }
         }
 
-        // One block per order line: its menu, its own options, its own controls.
         val renderedFieldIds = mutableSetOf<String>()
-        lines.forEach { line ->
+        surface.lines().forEach { line ->
             val menuLabel = line.menuValueToken?.let(catalog::valueLabel) ?: "메뉴 미정"
-            card.addView(Ui.body(this, "· 항목 ${line.lineId.removePrefix("l")} — $menuLabel"))
+            val price = line.menuValueToken?.let { catalog.value(it)?.priceDelta } ?: 0
+            body.addView(
+                Ui.lineHeader(
+                    context = this,
+                    name = menuLabel,
+                    price = if (price > 0) pricing.formatAmount(price) else "",
+                    onRemove = if (restaurant == null) {
+                        null
+                    } else {
+                        {
+                            chat += ChatLine("나:", "$menuLabel 빼기")
+                            actQuiet { it.removeLine(restaurant, line.lineId) }
+                        }
+                    },
+                ),
+            )
             line.slots.forEach slot@{ binding ->
                 val field = state.fields[AsprEngine.fieldIdFor(binding.lineSlotId)] ?: return@slot
                 renderedFieldIds += field.fieldId
-                renderFieldRow(field)
-            }
-            if (restaurant != null) {
-                // Four equal chips left "이 항목 빼기" too narrow to fit on one
-                // line, so the quantities and the removal take a row each.
-                card.addView(
-                    Ui.chipRow(
-                        this,
-                        (1..3).map { count ->
-                            "수량 ${count}개" to {
-                                act { it.setQuantity(restaurant, line.lineId, "qty.$count") }
-                            }
-                        },
-                    ),
-                )
-                card.addView(
-                    Ui.chipRow(
-                        this,
-                        listOf(
-                            "이 항목 빼기" to {
-                                chat += ChatLine("나:", "$menuLabel 빼기")
-                                actQuiet { it.removeLine(restaurant, line.lineId) }
-                            },
-                        ),
-                    ),
-                )
+                addRow(field, catalog.baseSlotOfLineSlotId(field.slotId)?.label ?: "옵션")
             }
         }
 
-        // Order-level rows: conditions, the utensil, the note, the total.
         state.fields.values.sortedBy { it.fieldId }.forEach { field ->
             if (field.fieldId in renderedFieldIds) return@forEach
             // A passing notice such as the rating request is not a draft row.
@@ -847,19 +847,23 @@ class MainActivity : Activity() {
                 catalog.slotOfFieldSlotId(field.slotId) != null ||
                 LineTokens.parseSlotId(field.slotId) != null
             if (!isDraftRow) return@forEach
-            renderFieldRow(field)
+            if (field.slotId == AsprEngine.SLOT_TOTAL) return@forEach
+            addRow(field, catalog.slotLabel(field.slotId))
         }
 
-        // Side menus join the order as their own lines.
-        if (restaurant != null && lines.isNotEmpty()) {
+        if (restaurant != null && surface.lines().isNotEmpty()) {
             val sides = catalog.sideMenus(restaurant).filter { it.inStock }
             if (sides.isNotEmpty()) {
-                card.addView(Ui.body(this, "사이드 추가"))
-                card.addView(
-                    Ui.chipRow(
+                body.addView(Ui.menuGroup(this, "사이드 추가").apply { setPadding(0, Ui.dp(this@MainActivity, 12), 0, Ui.dp(this@MainActivity, 4)) })
+                body.addView(
+                    Ui.chipFlow(
                         this,
+                        Ui.cardContentWidth(this),
                         sides.map { side ->
-                            "${side.label} ${pricing.formatAmount(side.priceDelta)}" to {
+                            Ui.Chip(
+                                label = side.label,
+                                sub = "+${pricing.formatAmount(side.priceDelta)}",
+                            ) {
                                 chat += ChatLine("나:", "사이드: ${side.label}")
                                 act { it.addLine(restaurant, side.token) }
                             }
@@ -872,44 +876,167 @@ class MainActivity : Activity() {
         val total = pricing.total(state)
         val budget = pricing.budgetLimit(state)
         val estimate = pricing.estimateMinutes(state)
-        card.addView(
+        body.addView(Ui.totalRow(this, "합계", pricing.formatAmount(total)))
+        body.addView(
             Ui.body(
                 this,
                 buildString {
-                    append("합성 총액 ${pricing.formatAmount(total)}")
                     if (budget != null) {
-                        append(if (total <= budget) " · 예산 안" else " · 예산 초과")
+                        append(
+                            if (total <= budget) {
+                                "예산 ${pricing.formatAmount(budget)} 안"
+                            } else {
+                                "예산 ${pricing.formatAmount(budget)} 초과"
+                            },
+                        )
                     }
-                    if (estimate != null) append(" · 합성 예상시간 ${estimate}분")
+                    if (estimate != null) {
+                        if (isNotEmpty()) append(" · ")
+                        append("예상 ${estimate}분")
+                    }
+                    if (isNotEmpty()) append(" · ")
+                    append("지금까지 확인·입력 ${state.resolutions.size}회")
                 },
             ),
         )
         pricing.lines(state).filter { !it.inStock }.takeIf { it.isNotEmpty() }?.let { soldOut ->
-            card.addView(
+            body.addView(
                 Ui.body(this, "품절로 다시 골라야 하는 항목: " + soldOut.joinToString { it.label }),
             )
         }
-        val confirmed = state.fields.values.count { it.status == FieldStatus.CONFIRMED }
-        card.addView(
-            Ui.body(
-                this,
-                "확인 완료 $confirmed · 확인 필요 ${openQuestions.size} · " +
-                    "지금까지 필요한 확인·입력 ${state.resolutions.size}회",
-            ),
-        )
-        if (restaurant != null) {
-            if (openQuestions.isEmpty()) {
-                card.addView(
-                    Ui.button(this, "이대로 주문하기 · ${pricing.formatAmount(total)}", primary = true) {
-                        act { it.requestDecision(restaurant) }
+
+        val footer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                Ui.primaryAction(
+                    context = this@MainActivity,
+                    text = if (openQuestions.isEmpty()) {
+                        "이대로 주문하기 · ${pricing.formatAmount(total)}"
+                    } else {
+                        "확인 ${openQuestions.size}건을 마치면 주문할 수 있습니다"
                     },
-                )
-            } else {
-                card.addView(
-                    Ui.body(this, "확인이 필요한 항목 ${openQuestions.size}개를 채우면 주문할 수 있습니다."),
+                    enabled = openQuestions.isEmpty() && restaurant != null,
+                ) {
+                    closePanel()
+                    scrollChatIntoView = true
+                    restaurant?.let { r -> act { it.requestDecision(r) } }
+                },
+            )
+        }
+        return Ui.sheet(this, "주문서", body, footer) { closePanel() }
+    }
+
+    /** Everything that is not the conversation, gathered behind one control. */
+    private fun menuPanel(): View {
+        val state = surface.state()
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        body.addView(Ui.menuGroup(this, "제품"))
+        body.addView(
+            Ui.menuItem(this, "내 취향과 기억", "저장된 것 전부 · 범위별 정정·철회·삭제") {
+                closePanel()
+                startActivity(Intent(this, MemoryActivity::class.java))
+            },
+        )
+        if (state.actions.isNotEmpty()) {
+            // The restaurant chips already stand at the end of the thread once an
+            // order is recorded, so this only carries the user down to them.
+            body.addView(
+                Ui.menuItem(this, "다른 식당에서 새로 주문", "대화 끝의 식당 목록으로 이동합니다") {
+                    scrollChatIntoView = true
+                    closePanel()
+                },
+            )
+        }
+
+        body.addView(Ui.menuGroup(this, "합성 환경 — 앱 밖에서 일어나는 일"))
+        body.addView(
+            Ui.menuItem(this, "시간 경과", "지연된 평가 요청이 도착합니다") {
+                closePanel()
+                act { it.advanceTime() }
+            },
+        )
+        currentRestaurant()?.let { restaurant ->
+            catalog.eventsFor(restaurant).forEach { event ->
+                body.addView(
+                    Ui.menuItem(this, "재고 변화", event.description) {
+                        closePanel()
+                        act { it.applyCatalogEvent(event.eventToken) }
+                    },
                 )
             }
         }
+        body.addView(
+            Ui.menuItem(this, "network 상태", "현재 ${state.network.name} · 눌러서 바꾸기") {
+                openPanel(Panel.NETWORK)
+            },
+        )
+        body.addView(
+            Ui.menuItem(this, "이 process 종료", "재실행 뒤 이어지는지 확인") {
+                // A real process death, not a screen that pretends. State is already
+                // durably committed, so the next launch reconciles from disk.
+                finishAffinity()
+                android.os.Process.killProcess(android.os.Process.myPid())
+            },
+        )
+
+        body.addView(Ui.menuGroup(this, "검증"))
+        body.addView(
+            Ui.menuItem(this, "비교 실행", "full / claim-off") {
+                closePanel()
+                startActivity(Intent(this, ComparisonActivity::class.java))
+            },
+        )
+        body.addView(
+            Ui.menuItem(this, "평가·내보내기", "공개 입력 불러오기 · 실행 · 결과 내보내기") {
+                closePanel()
+                startActivity(Intent(this, ProbeConsoleActivity::class.java))
+            },
+        )
+        body.addView(
+            Ui.menuItem(
+                this,
+                "검증 정보",
+                buildString {
+                    append("session ${state.sessionLabel.ifEmpty { "없음" }} · ")
+                    append("epoch ${state.processEpoch} · ")
+                    append("${armLabel()} · ")
+                    append("catalog ${catalog.snapshotDigest.take(12)} · ")
+                    append("마지막 판단 $lastDecision")
+                },
+            ) { },
+        )
+        if (!EvaluationNotification.hasPermission(this)) {
+            body.addView(
+                Ui.menuItem(this, "평가 알림 허용 요청", "거부해도 주문·기억·복구는 그대로 동작합니다") {
+                    closePanel()
+                    EvaluationNotification.requestPermission(this)
+                },
+            )
+        }
+        return Ui.sheet(this, "메뉴", body, null) { closePanel() }
+    }
+
+    /** The synthetic network state the decision path reads. */
+    private fun networkPanel(): View {
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(
+            Ui.menuGroup(this, "앱 안의 합성 상태입니다. 기기의 실제 연결과 무관합니다."),
+        )
+        listOf(
+            "ONLINE" to "현재 메뉴정보 확인 가능",
+            "DELAYED" to "최신 메뉴정보 지연 — 질문이 먼저, 없으면 대기",
+            "OFFLINE" to "cache가 있으면 대기, 없으면 중단",
+            "UNKNOWN" to "최신 여부 미확인",
+        ).forEach { (name, detail) ->
+            body.addView(
+                Ui.menuItem(this, name, detail) {
+                    closePanel()
+                    act { it.setNetwork(name) }
+                },
+            )
+        }
+        return Ui.sheet(this, "network 상태", body, null) { openPanel(Panel.MENU) }
     }
 
     /**
@@ -919,7 +1046,7 @@ class MainActivity : Activity() {
     private fun editChoices(
         field: DraftField,
         restaurant: RestaurantDefinition?,
-    ): List<Pair<String, () -> Unit>> {
+    ): List<Ui.Chip> {
         if (restaurant == null) return emptyList()
         if (field.slotId == AsprEngine.SLOT_TOTAL) return emptyList()
         val slot = catalog.slotOfFieldSlotId(field.slotId)
@@ -928,83 +1055,19 @@ class MainActivity : Activity() {
         return catalog.valuesFor(restaurant, slot.scopeToken)
             .filter { it.inStock }
             .map { option ->
-                val label = if (option.priceDelta > 0) {
-                    "${option.label} ${pricing.formatAmount(option.priceDelta)}"
-                } else {
-                    option.label
-                }
-                label to {
+                Ui.Chip(
+                    label = option.label,
+                    sub = if (option.priceDelta > 0) {
+                        "+${pricing.formatAmount(option.priceDelta)}"
+                    } else {
+                        ""
+                    },
+                    selected = option.token == field.value,
+                ) {
                     editingFieldId = null
                     answerField(field, option.token)
                 }
             }
-    }
-
-    /**
-     * The synthetic world around the order: time, stock, network and the
-     * process itself.
-     *
-     * These are not things a person says to the agent — a kitchen running out
-     * and days passing are events, and the official probe injects the same ones
-     * as operations. On a device somebody has to raise them, so they are
-     * gathered here under one honest label instead of being spread through the
-     * product screens.
-     */
-    private fun renderEnvironment() {
-        content.addView(Ui.divider(this))
-        content.addView(Ui.section(this, "합성 환경 조작 (시연·검증용)"))
-        content.addView(
-            Ui.body(
-                this,
-                "주문·기억은 위 화면에서 이루어지고, 여기서는 앱 밖에서 일어나는 사건만 일으킵니다.",
-            ),
-        )
-
-        content.addView(
-            Ui.button(this, "시간 경과 — 지연된 평가 요청 도착") { act { it.advanceTime() } },
-        )
-        val restaurant = currentRestaurant()
-        if (restaurant != null) {
-            catalog.eventsFor(restaurant).forEach { event ->
-                content.addView(
-                    Ui.button(this, "재고 변화 — ${event.description}") {
-                        act { it.applyCatalogEvent(event.eventToken) }
-                    },
-                )
-            }
-        }
-        listOf("ONLINE", "DELAYED", "OFFLINE", "UNKNOWN").forEach { network ->
-            content.addView(
-                Ui.button(this, "network을 $network 으로 설정") { act { it.setNetwork(network) } },
-            )
-        }
-        content.addView(
-            Ui.button(this, "이 process 종료 (재실행 뒤 연속성 확인)") {
-                // A real process death, not a screen that pretends. State is already
-                // durably committed, so the next launch reconciles from disk.
-                finishAffinity()
-                android.os.Process.killProcess(android.os.Process.myPid())
-            },
-        )
-    }
-
-    private fun renderNavigation() {
-        content.addView(Ui.divider(this))
-        content.addView(
-            Ui.button(this, "내 취향과 기억") {
-                startActivity(Intent(this, MemoryActivity::class.java))
-            },
-        )
-        content.addView(
-            Ui.button(this, "비교 실행 (full / claim-off)") {
-                startActivity(Intent(this, ComparisonActivity::class.java))
-            },
-        )
-        content.addView(
-            Ui.button(this, "평가·내보내기") {
-                startActivity(Intent(this, ProbeConsoleActivity::class.java))
-            },
-        )
     }
 
     // -------------------------------------------------------------- helpers

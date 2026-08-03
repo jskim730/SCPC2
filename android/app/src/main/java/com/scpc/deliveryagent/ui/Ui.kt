@@ -2,6 +2,7 @@ package com.scpc.deliveryagent.ui
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
@@ -11,6 +12,7 @@ import android.widget.EditText
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -24,9 +26,635 @@ import android.widget.TextView
  */
 object Ui {
 
+    // One palette, so a card, a bubble and a sheet cannot drift apart.
+    const val BRAND = "#173F35"
+    const val BRAND_TINT = "#E7EFEB"
+    const val CHAT_BG = "#DCE5E1"
+    const val INK = "#141A18"
+    const val INK_2 = "#5B6763"
+    const val LINE = "#D4DBD8"
+    const val ACCENT = "#1F6B55"
+    const val NEEDS = "#B4541F"
+
+    private fun color(value: String) = Color.parseColor(value)
+
     fun density(context: Context): Float = context.resources.displayMetrics.density
 
     fun dp(context: Context, value: Int): Int = (value * density(context)).toInt()
+
+    fun sp(context: Context, value: Float): Float =
+        value * context.resources.displayMetrics.scaledDensity
+
+    /** Width a chip row may use inside a card in the thread. */
+    fun cardContentWidth(context: Context): Int =
+        context.resources.displayMetrics.widthPixels - dp(context, 56)
+
+    private fun rounded(context: Context, fill: String, radius: Int, stroke: String? = null) =
+        GradientDrawable().apply {
+            setColor(color(fill))
+            cornerRadius = dp(context, radius).toFloat()
+            if (stroke != null) setStroke(dp(context, 1), color(stroke))
+        }
+
+    /** The screen's own header: where the order stands, and the way to everything else. */
+    fun appBar(
+        context: Context,
+        title: String,
+        subtitle: String,
+        menuLabel: String,
+        onMenu: () -> Unit,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundColor(color(BRAND))
+        setPadding(dp(context, 16), dp(context, 8), dp(context, 6), dp(context, 8))
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(
+                    TextView(context).apply {
+                        text = title
+                        textSize = 16f
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(Color.WHITE)
+                    },
+                )
+                addView(
+                    TextView(context).apply {
+                        text = subtitle
+                        textSize = 11f
+                        setTextColor(color("#B9CCC4"))
+                    },
+                )
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        addView(
+            Button(context).apply {
+                text = "⋮"
+                contentDescription = menuLabel
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                minWidth = dp(context, 48)
+                minHeight = dp(context, 48)
+                setPadding(0, 0, 0, 0)
+                background = rounded(context, BRAND, 24)
+                setOnClickListener { onMenu() }
+            },
+        )
+    }
+
+    /** One tappable answer. [sub] carries an amount when the option costs extra. */
+    data class Chip(
+        val label: String,
+        val sub: String = "",
+        val selected: Boolean = false,
+        val onTap: () -> Unit,
+    )
+
+    /**
+     * Chips packed into as few rows as fit.
+     *
+     * Android has no wrapping row, and a fixed column count breaks the moment a
+     * label is long, so the rows are packed from measured text width.
+     */
+    fun chipFlow(context: Context, availableWidth: Int, chips: List<Chip>): LinearLayout {
+        val gap = dp(context, 7)
+        val paint = Paint().apply { textSize = sp(context, 13.5f) }
+        val subPaint = Paint().apply { textSize = sp(context, 12f) }
+        val fixed = dp(context, 30)
+        fun widthOf(chip: Chip): Int {
+            val text = paint.measureText(chip.label).toInt()
+            val extra = if (chip.sub.isEmpty()) 0 else subPaint.measureText(chip.sub).toInt() + dp(context, 5)
+            return minOf(availableWidth, text + extra + fixed)
+        }
+
+        val rows = mutableListOf<MutableList<Chip>>()
+        var used = 0
+        chips.forEach { chip ->
+            val width = widthOf(chip)
+            if (rows.isEmpty() || used + gap + width > availableWidth) {
+                rows += mutableListOf(chip)
+                used = width
+            } else {
+                rows.last() += chip
+                used += gap + width
+            }
+        }
+
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            rows.forEach { row ->
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        setPadding(0, 0, 0, gap)
+                        row.forEachIndexed { index, chip ->
+                            addView(
+                                chipView(context, chip),
+                                LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                ).apply { if (index < row.size - 1) marginEnd = gap },
+                            )
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun chipView(context: Context, chip: Chip): Button = Button(context).apply {
+        text = if (chip.sub.isEmpty()) chip.label else "${chip.label}  ${chip.sub}"
+        // Selection is spelled out as well as drawn, so it never rests on colour.
+        contentDescription = if (chip.selected) "${chip.label} 선택됨" else chip.label
+        textSize = 13.5f
+        isAllCaps = false
+        minHeight = dp(context, 44)
+        minWidth = 0
+        setPadding(dp(context, 14), 0, dp(context, 14), 0)
+        setTextColor(color(INK))
+        if (chip.selected) {
+            setTypeface(typeface, Typeface.BOLD)
+            background = rounded(context, BRAND_TINT, 22, BRAND)
+        } else {
+            background = rounded(context, "#FFFFFF", 22, LINE)
+        }
+        setOnClickListener { chip.onTap() }
+    }
+
+    /**
+     * A question the agent asks, with its answers attached.
+     *
+     * [footnote] is where a consequence goes — what applying this value will and
+     * will not do later — because that belongs next to the choice, not in a
+     * separate line the user reads afterwards.
+     */
+    fun agentCard(
+        context: Context,
+        question: String,
+        hint: String,
+        chips: List<Chip>,
+        footnote: String = "",
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(context, 13), dp(context, 13), dp(context, 13), dp(context, 6))
+        background = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            val r = dp(context, 15).toFloat()
+            val tail = dp(context, 3).toFloat()
+            cornerRadii = floatArrayOf(tail, tail, r, r, r, r, r, r)
+        }
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { bottomMargin = dp(context, 9) }
+        addView(
+            TextView(context).apply {
+                text = question
+                textSize = 15f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(color(INK))
+            },
+        )
+        if (hint.isNotEmpty()) {
+            addView(
+                TextView(context).apply {
+                    text = hint
+                    textSize = 12f
+                    setTextColor(color(INK_2))
+                    setPadding(0, dp(context, 3), 0, dp(context, 10))
+                },
+            )
+        }
+        if (chips.isNotEmpty()) addView(chipFlow(context, cardContentWidth(context), chips))
+        if (footnote.isNotEmpty()) {
+            addView(
+                TextView(context).apply {
+                    text = footnote
+                    textSize = 11.5f
+                    setTextColor(color(ACCENT))
+                    setPadding(0, dp(context, 3), 0, dp(context, 4))
+                },
+            )
+        }
+    }
+
+    /** The always-present summary of the order, above the message field. */
+    fun orderBar(
+        context: Context,
+        count: Int,
+        summary: String,
+        onOpen: () -> Unit,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundColor(Color.WHITE)
+        setPadding(dp(context, 14), dp(context, 10), dp(context, 14), dp(context, 10))
+        contentDescription = "주문서 열기 $summary"
+        addView(
+            TextView(context).apply {
+                text = count.toString()
+                textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = rounded(context, BRAND, 11)
+                setPadding(dp(context, 9), dp(context, 3), dp(context, 9), dp(context, 3))
+            },
+        )
+        addView(
+            TextView(context).apply {
+                text = summary
+                textSize = 14f
+                setTextColor(color(INK))
+                setPadding(dp(context, 10), 0, 0, 0)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        addView(
+            TextView(context).apply {
+                text = "▲"
+                textSize = 12f
+                setTextColor(color(INK_2))
+            },
+        )
+        setOnClickListener { onOpen() }
+    }
+
+    /** One row of the draft: what it is, what it says, where it came from. */
+    fun draftRow(
+        context: Context,
+        label: String,
+        value: String,
+        source: String,
+        needsUser: Boolean,
+        onChange: (() -> Unit)?,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(context, 6), 0, dp(context, 6))
+        addView(
+            TextView(context).apply {
+                text = label
+                textSize = 13f
+                setTextColor(color(INK_2))
+            },
+            LinearLayout.LayoutParams(dp(context, 70), ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(
+                    TextView(context).apply {
+                        text = value
+                        textSize = 13.5f
+                        setTextColor(color(INK))
+                    },
+                )
+                if (source.isNotEmpty()) {
+                    addView(
+                        TextView(context).apply {
+                            text = source
+                            textSize = 11f
+                            setTextColor(color(if (needsUser) NEEDS else ACCENT))
+                        },
+                    )
+                }
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        if (onChange != null) {
+            addView(
+                Button(context).apply {
+                    text = "변경"
+                    contentDescription = "$label 변경"
+                    textSize = 12f
+                    isAllCaps = false
+                    minWidth = dp(context, 56)
+                    minHeight = dp(context, 44)
+                    setPadding(dp(context, 10), 0, dp(context, 10), 0)
+                    setTextColor(color(INK))
+                    background = rounded(context, "#FFFFFF", 15, LINE)
+                    setOnClickListener { onChange() }
+                },
+            )
+        }
+    }
+
+    /** The heading of one order line inside the draft. */
+    fun lineHeader(
+        context: Context,
+        name: String,
+        price: String,
+        onRemove: (() -> Unit)?,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(context, 14), 0, dp(context, 2))
+        addView(
+            TextView(context).apply {
+                text = name
+                textSize = 14.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(color(INK))
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        if (price.isNotEmpty()) {
+            addView(
+                TextView(context).apply {
+                    text = price
+                    textSize = 13.5f
+                    setTextColor(color(INK))
+                },
+            )
+        }
+        if (onRemove != null) {
+            addView(
+                Button(context).apply {
+                    text = "빼기"
+                    contentDescription = "$name 빼기"
+                    textSize = 12f
+                    isAllCaps = false
+                    minWidth = dp(context, 48)
+                    minHeight = dp(context, 44)
+                    setPadding(dp(context, 8), 0, dp(context, 8), 0)
+                    setTextColor(color(INK_2))
+                    background = rounded(context, "#FFFFFF", 15, LINE)
+                    setOnClickListener { onRemove() }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { marginStart = dp(context, 8) },
+            )
+        }
+    }
+
+    fun totalRow(context: Context, label: String, amount: String): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(context, 14), 0, dp(context, 2))
+            addView(
+                TextView(context).apply {
+                    text = label
+                    textSize = 15f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(color(INK))
+                },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            addView(
+                TextView(context).apply {
+                    text = amount
+                    textSize = 15f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(color(INK))
+                },
+            )
+        }
+
+    /** One entry of the overflow menu. */
+    fun menuItem(
+        context: Context,
+        title: String,
+        detail: String,
+        onTap: () -> Unit,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(context, 18), dp(context, 13), dp(context, 18), dp(context, 13))
+        contentDescription = "$title. $detail"
+        addView(
+            TextView(context).apply {
+                text = title
+                textSize = 14.5f
+                setTextColor(color(INK))
+            },
+        )
+        if (detail.isNotEmpty()) {
+            addView(
+                TextView(context).apply {
+                    text = detail
+                    textSize = 11.5f
+                    setTextColor(color(INK_2))
+                    setPadding(0, dp(context, 2), 0, 0)
+                },
+            )
+        }
+        setOnClickListener { onTap() }
+    }
+
+    fun menuGroup(context: Context, text: String): TextView = TextView(context).apply {
+        this.text = text
+        textSize = 11.5f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(color(INK_2))
+        setPadding(dp(context, 18), dp(context, 14), dp(context, 18), dp(context, 4))
+    }
+
+    /**
+     * A panel that covers the thread until it is answered or dismissed.
+     *
+     * The scrim takes the tap so nothing behind it can be pressed by accident
+     * while the panel is up.
+     */
+    fun sheet(
+        context: Context,
+        title: String,
+        body: View,
+        footer: View?,
+        onDismiss: () -> Unit,
+    ): FrameLayout = FrameLayout(context).apply {
+        addView(
+            View(context).apply {
+                setBackgroundColor(Color.parseColor("#52000000"))
+                contentDescription = "$title 닫기"
+                setOnClickListener { onDismiss() }
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(Color.WHITE)
+                    val r = dp(context, 16).toFloat()
+                    cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+                }
+                addView(
+                    View(context).apply {
+                        background = rounded(context, "#D8DEDC", 2)
+                    },
+                    LinearLayout.LayoutParams(dp(context, 36), dp(context, 4)).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        topMargin = dp(context, 8)
+                        bottomMargin = dp(context, 8)
+                    },
+                )
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(context, 16), 0, dp(context, 8), dp(context, 8))
+                        addView(
+                            TextView(context).apply {
+                                this.text = title
+                                textSize = 16f
+                                setTypeface(typeface, Typeface.BOLD)
+                                setTextColor(color(INK))
+                            },
+                            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                        )
+                        addView(
+                            Button(context).apply {
+                                this.text = "닫기"
+                                contentDescription = "$title 닫기"
+                                textSize = 12f
+                                isAllCaps = false
+                                minHeight = dp(context, 44)
+                                minWidth = dp(context, 56)
+                                setTextColor(color(INK_2))
+                                background = rounded(context, "#FFFFFF", 15, LINE)
+                                setOnClickListener { onDismiss() }
+                            },
+                        )
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+                addView(
+                    ScrollView(context).apply {
+                        isFillViewport = false
+                        addView(
+                            body,
+                            ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ),
+                        )
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1f,
+                    ),
+                )
+                if (footer != null) {
+                    addView(
+                        footer,
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ),
+                    )
+                }
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.BOTTOM },
+        )
+    }
+
+    /** One proposed menu inside the agent's recommendation card. */
+    fun candidateRow(
+        context: Context,
+        name: String,
+        meta: String,
+        reasons: String,
+        actionLabel: String,
+        onTap: (() -> Unit)?,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(context, 10), 0, dp(context, 10))
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(
+                    TextView(context).apply {
+                        text = name
+                        textSize = 14.5f
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(color(INK))
+                    },
+                )
+                addView(
+                    TextView(context).apply {
+                        text = meta
+                        textSize = 12f
+                        setTextColor(color(INK_2))
+                        setPadding(0, dp(context, 2), 0, 0)
+                    },
+                )
+                if (reasons.isNotEmpty()) {
+                    addView(
+                        TextView(context).apply {
+                            text = reasons
+                            textSize = 11f
+                            setTextColor(color(ACCENT))
+                            setPadding(0, dp(context, 3), 0, 0)
+                        },
+                    )
+                }
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        if (onTap != null) {
+            addView(
+                Button(context).apply {
+                    text = actionLabel
+                    contentDescription = "$name $actionLabel"
+                    textSize = 12.5f
+                    isAllCaps = false
+                    setTypeface(typeface, Typeface.BOLD)
+                    minWidth = dp(context, 56)
+                    minHeight = dp(context, 44)
+                    setPadding(dp(context, 12), 0, dp(context, 12), 0)
+                    setTextColor(Color.WHITE)
+                    background = rounded(context, BRAND, 17)
+                    setOnClickListener { onTap() }
+                },
+            )
+        }
+    }
+
+    /** The one action a sheet exists to make possible. */
+    fun primaryAction(
+        context: Context,
+        text: String,
+        enabled: Boolean,
+        onTap: () -> Unit,
+    ): Button = Button(context).apply {
+        this.text = text
+        contentDescription = text
+        textSize = 15f
+        isAllCaps = false
+        setTypeface(typeface, Typeface.BOLD)
+        minHeight = dp(context, 52)
+        isEnabled = enabled
+        setTextColor(if (enabled) Color.WHITE else color("#98A19E"))
+        background = rounded(context, if (enabled) BRAND else "#E7EAE9", 12)
+        setOnClickListener { if (enabled) onTap() }
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            leftMargin = dp(context, 16)
+            rightMargin = dp(context, 16)
+            topMargin = dp(context, 10)
+            bottomMargin = dp(context, 14)
+        }
+    }
 
     fun column(context: Context): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
