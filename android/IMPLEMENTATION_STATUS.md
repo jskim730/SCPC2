@@ -364,11 +364,12 @@ freeze 전에 JVM에서 재현 가능한 것은 전부 JVM 테스트로 내려�
 
 0. **freeze 전 최우선 — 전부 완료 (2026-08-03).** 전 식당 완주 전수검사(장바구니 경로 추가),
    자유 탐색 UI 크래시 경로 전수 확인·차단.
-1. **제출 문서 초안 3종** — 기술노트 초안 완료(2026-08-03, 루트 `MISSION_AND_TECHNICAL_NOTE.md`,
-   제출 가이드 §2의 10항목 전부 커버, 사용자 검토 뒤 8/4 PDF 변환). `INSTALL_AND_USE_GUIDE`·
-   `BUILD_AND_SUBMISSION_INFO` 초안 미착수.
-2. 파서 어휘 확장 — 데모에서 쓸 문장을 먼저 확정하고 그 표현을 확실히 커버한다. 대본 버튼의 문장은
-   현재 어휘로 전부 커버됨을 JVM 테스트가 아니라 육안으로도 한 번 확인한다.
+1. **제출 문서 초안 3종** — 기술노트·설치가이드 초안 완료(2026-08-03, 루트
+   `MISSION_AND_TECHNICAL_NOTE.md`·`INSTALL_AND_USE_GUIDE.md`). 설치가이드에 E1–E4 재현 문장이
+   들어 있어 앱에서 대본을 뺄 수 있었다. `BUILD_AND_SUBMISSION_INFO` 초안 미착수.
+2. 파서 어휘 확장 — 데모에서 쓸 문장을 먼저 확정하고 그 표현을 확실히 커버한다.
+   `INSTALL_AND_USE_GUIDE`의 E1–E4 문장이 현재 어휘로 전부 커버됨을 JVM 테스트가 아니라
+   기기에서 직접 타이핑해서도 한 번 확인한다.
 
 (완료: MemoryActivity 리뷰·평점·범위별 취향 목록과 범위별 철회·삭제, release 서명 배선 — 2026-07-31)
 
@@ -400,7 +401,7 @@ adb shell settings put global mobile_data 1
 ```
 
 4. `./gradlew.bat :app:connectedDebugAndroidTest` — parity test 실행
-5. `installDebug` 후 채팅으로 E1→E4 완주. 대본 버튼으로도 재현 가능
+5. `installDebug` 후 `INSTALL_AND_USE_GUIDE` 3장의 문장을 그대로 입력해 E1→E4 완주
 6. 앱 안 `평가·내보내기`에서 `release_v3/probe/PUBLIC_PROBE_INPUT_13_STEP.json` import → run → export
 7. release 서명 APK를 `work/APP.apk`로 두고 `make_local_integration_fixture.py` →
    `runnerctl.py run` → `PROBE_RESULT.json` 확인 (`SETUP_AND_REHEARSAL_RUNBOOK.md` Phase 1)
@@ -480,8 +481,8 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
 Toast가 되고, `answerScope`는 **실제로 저장된 값만** 대화에 말한다(G3 정직성).
 
 낡은 화면 상태 경로도 닫았다: `clearTransientScreenState()`가 후보·재사용 범위 질문·리뷰 진행
-상태 7필드를 비우며, 식당 선택 chip과 대본의 새 주문/다음 session 버튼 5곳 모두 session 전환
-시 호출한다. 이전 식당의 추천을 새 식당에서 누르거나 반쯤 답한 리뷰 범위가 다음 session의
+상태 7필드를 비우며, 식당 선택 chip과 `다음 주문을 시작할까요?` chip 모두 session 전환 시
+호출한다. 이전 식당의 추천을 새 식당에서 누르거나 반쯤 답한 리뷰 범위가 다음 session의
 render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core에 있으므로 이 초기화의 영향을 받지
 않는다.
 
@@ -547,6 +548,7 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 | 2026-08-03 | 전 식당 완주 검증: 화면과 같은 답변 루프로 6식당 × main 메뉴 단독과 식당별 전체 메뉴를 완주, 전부 `ACT` 도달·결함 0건. 8/1의 `AllRestaurantCompletionTest`와 병합하며 **전체 메뉴 장바구니 경로**만 그 파일에 남기고 중복 파일은 삭제 |
 | 2026-08-03 | 기기 육안 테스트 피드백 반영 — 표시 전용, 판단 로직·probe 경로 무변경: ① "현재 상황"의 내부 정보(주문 session·process epoch·비교 arm·마지막 판단·catalog digest)를 하단 접이식 "검증 정보 (심사용)"로 이동 ② 내부 line ID 노출 제거(`항목 l1` → `항목 1`, `slotLabel` 포함) ③ 상단 "지금 단계" 배너(식당→메뉴→옵션 확인→확정→평가)와 "다음 할 일" 한 줄 추가, 주문 확정 버튼을 초안 하단에서 배너로 이동 ④ 대화형 액션(문장 전송·질문 답·재사용 범위 답) 후 대화 위치로 자동 스크롤 ⑤ 여러 버튼 핸들러가 `act()` 재렌더 **뒤에** chat을 추가해 방금 행동의 피드백이 다음 상호작용까지 화면에 안 보이던 표시 버그 수정. JVM 144개 통과 |
 | 2026-08-03 | 알림: 8/3 작업이 낡은 7/31 기반 위에서 진행되어 "구현이 없다"는 전제로 `POST_NOTIFICATIONS` 선언을 지웠으나, 8/1 커밋에 이미 `EvaluationNotification` 구현이 있었다. 병합 시 **선언을 되살려** (a)안(ledger 정본 + 배너, 알림은 부수 표시)으로 통일 |
+| 2026-08-03 | 앱에서 E1–E4 대본 제거(약 110줄)와 조작 재배치. 각본은 "준비된 happy path만 되는 앱"으로 읽힐 소지가 있고 심사관은 설치가이드를 보고 직접 입력하면 된다. 다만 조사 결과 `advanceTime`·`applyCatalogEvent`·`nextOrderSession`·`correctPreference`가 **대본 블록에서만** 호출되고 있어(식당 chip은 주문이 열려 있으면 숨고 `resetEverything`은 UI 미연결) 통째로 지우면 E2–E4와 지연 outcome 시연이 기기에서 불가능해진다. 그래서 각본 문장 버튼만 지우고 조작은 성격대로 나눴다: **새 주문 시작**은 주문 확정 후 뜨는 제품 UI(`renderNextOrder`), **취향 값 정정**은 `내 취향과 기억`의 철회·삭제 옆으로, **시간 경과·재고 변화**는 network·process 종료와 함께 **"합성 환경 조작 (시연·검증용)"** 패널로 통합. 품절 버튼은 하드코딩 대신 `catalog.eventsFor(현재 식당)`로 authored event를 나열한다. E1–E4 문장은 `INSTALL_AND_USE_GUIDE.md`로 옮겼다. JVM 149개 통과 |
 | 2026-08-03 | 주문서를 대화 속 카드로: `Ui.card`·`Ui.editableRow` 추가, 초안의 모든 행에 **변경** 버튼을 붙여 그 자리에서 이 식당이 제공하는 값 chip을 열고 고르게 했다(빈칸 채우기와 값 수정이 같은 동작). "이대로 주문하기" 버튼을 카드 안으로 옮겨 상단 배너와 중복 제거 |
 | 2026-08-03 | 옵션 확충(option slot 14→21): `국물 양`·`파`·`떡 종류`·`어묵 추가`·`사리`·`튀김 정도`·`단무지` 신설. 메인 메뉴당 옵션 1–3개 → 4–5개, 사이드도 옵션 1개씩 보유. **`파`는 세 main 유형 전부의 stable slot**이라 한 번 저장하면 모든 식당을 건넌다. `소스 따로`는 이미 요청 메모 값이라 사이드는 `튀김 정도`로 대체(스크립트의 문구 충돌 감지가 잡아냄). 대본 E1에 "앞으로도 파는 빼줘"와 사리 취향 학습을 추가해 부담 비교가 **E1 2건 → E2 1건**으로 벌어졌다. 완주 테스트가 새 옵션까지 자동 커버, 주문 완주형 테스트 10개는 화면 chip과 같은 방식으로 남은 질문을 답하는 공용 `answerRemaining` 헬퍼로 전환해 이후 카탈로그 확장에 견디게 했다. JVM 149개 통과 |
 | 2026-08-03 | 대화창 말풍선(표시 전용): `Ui.chatLine`을 한 줄 TextView에서 말풍선으로 교체 — 사용자는 우측 브랜드색, 에이전트는 좌측 회색에 이름 라벨, 화면폭 78% 제한, 화자 쪽 모서리만 각지게. **색에 의존하지 않는 화자 식별**은 좌우 위치·이름 라벨·`contentDescription`("화자 + 문장") 세 겹으로 유지. 에이전트의 열린 질문·재사용 범위 질문·추천 도입·식당 선택 안내를 섹션 제목 대신 말풍선으로 바꿔 chip이 quick reply로 읽히게 하고, 스레드 보존 12줄 → 40줄. JVM 149개 통과 |

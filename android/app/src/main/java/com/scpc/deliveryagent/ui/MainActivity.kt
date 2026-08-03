@@ -62,7 +62,6 @@ class MainActivity : Activity() {
     private var reviewNeedsTarget = false
     private var reviewTargetToken: String? = null
     private var lastDecision = "-"
-    private var showScript = false
     private var showDiagnostics = false
 
     /** The draft row whose value chips are currently open, if any. */
@@ -76,14 +75,6 @@ class MainActivity : Activity() {
     private val catalog: SyntheticCatalog get() = Production.catalog(this)
     private val pricing: DraftPricing get() = DraftPricing(catalog)
     private val surface: ProductSurface get() = Production.surface(this)
-
-    private fun restaurant(token: String): RestaurantDefinition =
-        catalog.restaurant(token) ?: error("synthetic catalog is missing $token")
-
-    private val marahyang get() = restaurant("restaurant.marahyang")
-    private val geumson get() = restaurant("restaurant.geumson")
-    private val hanbam get() = restaurant("restaurant.hanbam")
-    private val ongi get() = restaurant("restaurant.ongi")
 
     /** The restaurant the order is currently against. */
     private fun currentRestaurant(): RestaurantDefinition? =
@@ -299,9 +290,9 @@ class MainActivity : Activity() {
         renderCandidates()
         renderDraft(state)
         renderReview(state)
+        renderNextOrder(state)
         renderSituation(state)
-        renderScript()
-        renderInterruptions()
+        renderEnvironment()
         renderDiagnostics(state)
         renderNavigation()
 
@@ -666,6 +657,32 @@ class MainActivity : Activity() {
         render()
     }
 
+    /**
+     * Starting the next order.
+     *
+     * Once this order is recorded the conversation moves on, which is where a
+     * preference stated here first has to prove itself. Choosing the restaurant
+     * opens a new session, so nothing said only for the last order carries into
+     * this one.
+     */
+    private fun renderNextOrder(state: ProductionState) {
+        if (state.actions.isEmpty()) return
+        if (currentRestaurant() == null) return
+        content.addView(Ui.chatLine(this, "에이전트:", "다음 주문을 시작할까요?"))
+        content.addView(
+            Ui.chipRow(
+                this,
+                catalog.restaurants.map { restaurant ->
+                    restaurant.name to {
+                        clearTransientScreenState()
+                        chat += ChatLine("나:", "${restaurant.name}에서 새로 주문할게")
+                        act { it.nextOrderSession(restaurant) }
+                    }
+                },
+            ),
+        )
+    }
+
     private fun renderSituation(state: ProductionState) {
         content.addView(Ui.section(this, "현재 상황"))
         content.addView(
@@ -893,122 +910,39 @@ class MainActivity : Activity() {
             }
     }
 
-    /** A fixed walk of the four episodes, kept for the demo recording. */
-    private fun renderScript() {
+    /**
+     * The synthetic world around the order: time, stock, network and the
+     * process itself.
+     *
+     * These are not things a person says to the agent — a kitchen running out
+     * and days passing are events, and the official probe injects the same ones
+     * as operations. On a device somebody has to raise them, so they are
+     * gathered here under one honest label instead of being spread through the
+     * product screens.
+     */
+    private fun renderEnvironment() {
         content.addView(Ui.divider(this))
-        content.addView(
-            Ui.button(this, if (showScript) "대본 접기" else "E1–E4 대본 펼치기") {
-                showScript = !showScript
-                render()
-            },
-        )
-        if (!showScript) return
-
-        content.addView(Ui.section(this, "E1 — 첫 주문과 기억 허용범위 (${marahyang.name})"))
-        content.addView(
-            Ui.button(this, "${marahyang.name}에서 새 주문 시작") {
-                clearTransientScreenState()
-                act { it.startNewOrder(marahyang) }
-            },
-        )
-        content.addView(
-            Ui.button(this, "\"1만5천원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘\"") {
-                onSend("1만5천원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘")
-            },
-        )
-        content.addView(Ui.button(this, "\"추천해줘\"") { onSend("추천해줘") })
-        content.addView(
-            Ui.button(this, "\"앞으로도 수저 빼고\"") { onSend("앞으로도 수저 빼고") },
-        )
-        content.addView(
-            Ui.button(this, "시간 경과 — 평가 요청 도착") { act { it.advanceTime() } },
-        )
-        content.addView(
-            Ui.button(this, "\"고수 향이 세서 힘들었어\" 평가 남기기") {
-                currentRestaurant()?.let { restaurant ->
-                    reviewRating = surface.ratingOptions().firstOrNull { it.token == "rating.ok" }
-                    onReview(restaurant, "고수 향이 세서 힘들었어")
-                }
-            },
-        )
-        content.addView(
-            Ui.body(this, "→ 승인 범위에서 \"같은 메뉴 유형이면 어디서든\"을 고른다."),
-        )
-
-        content.addView(Ui.section(this, "E2 — 다른 식당, 같은 마라 유형 (${geumson.name})"))
-        content.addView(
-            Ui.button(this, "다음 주문 session · ${geumson.name}") {
-                clearTransientScreenState()
-                act { it.nextOrderSession(geumson) }
-            },
-        )
-        content.addView(
-            Ui.button(this, "\"2만5천원 이하로 30분 안에, 추천해줘\"") {
-                onSend("2만5천원 이하로 30분 안에, 추천해줘")
-            },
-        )
-        content.addView(
-            Ui.body(this, "→ 마라 떡볶이와 국물 떡볶이를 담으면 고수가 자동으로 빠져 있다."),
-        )
-        content.addView(
-            Ui.button(this, "\"이번 주문만 치즈 추가해줘\"") { onSend("이번 주문만 치즈 추가해줘") },
-        )
-
-        content.addView(Ui.section(this, "E3 — 예외·권한 철회·취향 정정"))
-        content.addView(
-            Ui.button(this, "다음 주문 session · ${geumson.name}") {
-                clearTransientScreenState()
-                act { it.nextOrderSession(geumson) }
-            },
-        )
-        content.addView(
-            Ui.button(this, "\"이번 주문만 아주 맵게 해줘\"") { onSend("이번 주문만 아주 맵게 해줘") },
-        )
-        content.addView(
-            Ui.button(this, "\"일회용 수저는 앞으로 자동으로 정하지 마\"") {
-                onSend("일회용 수저는 앞으로 자동으로 정하지 마")
-            },
-        )
-        content.addView(
-            Ui.button(this, "저장된 맵기를 중간맛으로 정정") {
-                act { it.correctPreference(PreferenceScopes.global(Slots.SPICINESS), "spice.medium") }
-            },
-        )
-
-        content.addView(Ui.section(this, "E4 — 미제공 옵션·품절·부분복구 (${marahyang.name})"))
-        content.addView(
-            Ui.button(this, "다음 주문 session · ${marahyang.name}") {
-                clearTransientScreenState()
-                act { it.nextOrderSession(marahyang) }
-            },
-        )
-        content.addView(
-            Ui.button(this, "\"마라탕으로 할게\"") { onSend("마라탕으로 할게") },
-        )
+        content.addView(Ui.section(this, "합성 환경 조작 (시연·검증용)"))
         content.addView(
             Ui.body(
                 this,
-                "→ 고수는 E1 승인대로 자동 적용되지만, 이 집은 중간맛을 내지 않아 맵기만 다시 묻는다.",
+                "주문·기억은 위 화면에서 이루어지고, 여기서는 앱 밖에서 일어나는 사건만 일으킵니다.",
             ),
         )
-        content.addView(
-            Ui.button(this, "\"꿔바로우 추가하고 소스는 따로 포장해줘\"") {
-                onSend("꿔바로우 추가하고 소스는 따로 포장해줘")
-            },
-        )
-        content.addView(
-            Ui.button(this, "사이드 품절 event 도착 (더 높은 catalog version)") {
-                act { it.applyCatalogEvent("catalog.marahyang.menu.guobaorou.soldout") }
-            },
-        )
-        content.addView(
-            Ui.button(this, "\"메모 지워줘\"") { onSend("메모 지워줘") },
-        )
-    }
 
-    private fun renderInterruptions() {
-        content.addView(Ui.divider(this))
-        content.addView(Ui.section(this, "network·중단 상황"))
+        content.addView(
+            Ui.button(this, "시간 경과 — 지연된 평가 요청 도착") { act { it.advanceTime() } },
+        )
+        val restaurant = currentRestaurant()
+        if (restaurant != null) {
+            catalog.eventsFor(restaurant).forEach { event ->
+                content.addView(
+                    Ui.button(this, "재고 변화 — ${event.description}") {
+                        act { it.applyCatalogEvent(event.eventToken) }
+                    },
+                )
+            }
+        }
         listOf("ONLINE", "DELAYED", "OFFLINE", "UNKNOWN").forEach { network ->
             content.addView(
                 Ui.button(this, "network을 $network 으로 설정") { act { it.setNetwork(network) } },

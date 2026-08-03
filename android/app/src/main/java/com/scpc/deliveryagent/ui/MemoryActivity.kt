@@ -24,6 +24,9 @@ class MemoryActivity : Activity() {
 
     private lateinit var content: LinearLayout
 
+    /** The stored preference whose replacement values are open, if any. */
+    private var correcting: String? = null
+
     private val catalog: SyntheticCatalog get() = Production.catalog(this)
 
     private val surface: ProductSurface get() = Production.surface(this)
@@ -178,9 +181,44 @@ class MemoryActivity : Activity() {
                             "이 취향 삭제" to {
                                 guarded { it.deletePreference(preference.scopeToken) }
                             },
+                            (if (correcting == preference.scopeToken) "정정 닫기" else "값 정정") to {
+                                correcting = if (correcting == preference.scopeToken) {
+                                    null
+                                } else {
+                                    preference.scopeToken
+                                }
+                                render()
+                            },
                         ),
                     ),
                 )
+                // Correcting a stored value belongs with revoking and deleting
+                // it: one place where every remembered thing can be answered
+                // for, rather than a setting hidden somewhere else.
+                if (correcting == preference.scopeToken) {
+                    val slot = preference.baseSlot
+                    if (slot == null) {
+                        content.addView(Ui.body(this, "이 항목은 여기서 값을 바꿀 수 없습니다."))
+                    } else {
+                        content.addView(Ui.body(this, "새 값을 고르면 더 높은 권위로 갱신됩니다."))
+                        content.addView(
+                            Ui.chipRow(
+                                this,
+                                slot.values.filter { it.inStock }.map { option ->
+                                    option.label to {
+                                        correcting = null
+                                        guarded {
+                                            it.correctPreference(
+                                                preference.scopeToken,
+                                                option.token,
+                                            )
+                                        }
+                                    }
+                                },
+                            ),
+                        )
+                    }
+                }
             }
         }
 

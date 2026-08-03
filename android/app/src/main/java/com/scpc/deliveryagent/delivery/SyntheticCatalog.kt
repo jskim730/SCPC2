@@ -350,6 +350,10 @@ class SyntheticCatalog private constructor(
     fun event(eventToken: String): CatalogEvent =
         events.firstOrNull { it.eventToken == eventToken } ?: error("unknown event $eventToken")
 
+    /** The authored catalog changes that can be raised at this restaurant. */
+    fun eventsFor(restaurant: RestaurantDefinition): List<CatalogEvent> =
+        events.filter { it.entityToken == restaurant.entityToken }
+
     /** Label for an opaque value token, falling back to the token itself. */
     fun valueLabel(token: String?): String = when {
         token == null -> "미정"
