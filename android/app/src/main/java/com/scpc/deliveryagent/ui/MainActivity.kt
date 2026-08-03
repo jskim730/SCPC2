@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
@@ -105,7 +106,34 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         content = Ui.column(this)
         scroller = Ui.scroller(this, content)
-        setContentView(scroller)
+        // Chat-room form: the thread scrolls, the message field stays pinned at
+        // the bottom of the screen the way every messenger holds it.
+        val inputBar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                Ui.dp(this@MainActivity, 16),
+                Ui.dp(this@MainActivity, 4),
+                Ui.dp(this@MainActivity, 16),
+                Ui.dp(this@MainActivity, 8),
+            )
+            addView(
+                Ui.inputRow(
+                    context = this@MainActivity,
+                    hint = "예: 2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘",
+                    sendLabel = "보내기",
+                    onSend = ::onSend,
+                ),
+            )
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                scroller,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
+            )
+            addView(inputBar)
+        }
+        setContentView(root)
         render()
     }
 
@@ -248,22 +276,16 @@ class MainActivity : Activity() {
 
         renderStage(state)
 
-        content.addView(
-            Ui.inputRow(
-                context = this,
-                hint = "예: 2만원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘",
-                sendLabel = "보내기",
-                onSend = ::onSend,
-            ),
-        )
-
+        // The thread reads in conversation order: what was said, what the agent
+        // asks now, what it proposes, the draft being filled, then the review
+        // once an order exists. Demo and verification tools sit below the fold.
         renderRestaurantChoice()
         renderConversation()
         renderQuestions(state)
         renderCandidates()
+        renderDraft(state)
         renderReview(state)
         renderSituation(state)
-        renderDraft(state)
         renderScript()
         renderInterruptions()
         renderDiagnostics(state)
@@ -336,7 +358,7 @@ class MainActivity : Activity() {
     private fun renderConversation() {
         if (chat.isEmpty()) {
             content.addView(
-                Ui.body(this, "무엇을 먹고 싶은지, 예산과 조건을 그대로 말해 주세요."),
+                Ui.body(this, "무엇을 먹고 싶은지, 예산과 조건을 아래 입력창에 그대로 말해 주세요."),
             )
             return
         }
@@ -663,13 +685,12 @@ class MainActivity : Activity() {
     }
 
     private fun renderDraft(state: ProductionState) {
-        content.addView(Ui.section(this, "주문 초안"))
         val restaurant = currentRestaurant()
         val lines = surface.lines()
-        if (state.fields.isEmpty() && lines.isEmpty()) {
-            content.addView(Ui.body(this, "아직 초안이 없습니다."))
-            return
-        }
+        // No empty placeholder card: before anything is in the draft, the stage
+        // banner already says what to do, and the thread stays a conversation.
+        if (state.fields.isEmpty() && lines.isEmpty()) return
+        content.addView(Ui.section(this, "주문 초안서"))
 
         fun renderFieldRow(field: com.scpc.deliveryagent.core.DraftField) {
             val entry = catalog.value(field.value)
