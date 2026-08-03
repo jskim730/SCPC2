@@ -363,8 +363,9 @@ freeze 전에 JVM에서 재현 가능한 것은 전부 JVM 테스트로 내려�
 
 0. **freeze 전 최우선 3건 — 전부 완료 (2026-08-03).** 모든 식당 주문 완주 테스트
    `AllRestaurantsCompletionTest`, 알림 권한 선언 제거, UI 크래시 경로 전수 확인·차단.
-1. **제출 문서 초안 3종** — `MISSION_AND_TECHNICAL_NOTE`, `INSTALL_AND_USE_GUIDE`,
-   `BUILD_AND_SUBMISSION_INFO`. 위 "핵심 설계 결정"이 기술노트의 뼈대다.
+1. **제출 문서 초안 3종** — 기술노트 초안 완료(2026-08-03, 루트 `MISSION_AND_TECHNICAL_NOTE.md`,
+   제출 가이드 §2의 10항목 전부 커버, 사용자 검토 뒤 8/4 PDF 변환). `INSTALL_AND_USE_GUIDE`·
+   `BUILD_AND_SUBMISSION_INFO` 초안 미착수.
 2. 파서 어휘 확장 — 데모에서 쓸 문장을 먼저 확정하고 그 표현을 확실히 커버한다. 대본 버튼의 문장은
    현재 어휘로 전부 커버됨을 JVM 테스트가 아니라 육안으로도 한 번 확인한다.
 
@@ -570,3 +571,4 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 | 2026-08-03 | 알림 (b)안 확정(freeze 전 최우선 2/3): `POST_NOTIFICATIONS` 선언 제거 — 앱은 선택 권한을 하나도 선언하지 않고, 지연 평가 요청은 ledger 정본 + in-app 배너로 성립. 선언·구현 불일치 해소, 기술노트 서술 지침을 미구현 절 1에 기록 |
 | 2026-08-03 | UI 크래시 경로 전수 차단(freeze 전 최우선 3/3): `act`/try-catch 밖 변경 호출 9곳(Main 4·Memory 5, 공통 `guarded` 헬퍼) 감싸기 — 낡은 항목·중복 탭이 크래시 대신 Toast. `answerScope`는 실제 저장된 값만 대화에 말함. `clearTransientScreenState()`로 session 전환 5곳(식당 chip·대본 버튼)에서 후보·범위 질문·리뷰 진행 상태 초기화. JVM 144개 통과 |
 | 2026-08-03 | 채팅방형 화면 구성(표시 전용, 제품 결정): 입력창을 메신저처럼 화면 하단에 고정하고 스레드는 위에서 스크롤. 스레드 순서를 대화 흐름대로 재배치(대화 → 질문 → 추천 후보 → 주문 초안서 → 주문 완료 후 평가 → 상황, 대본·network·검증 도구는 아래로), 빈 초안 placeholder 제거. 흐름 자체(자연어 → 후보 → 선택 → 항목별 초안 → 빈 칸 질문 → 확정 → 평가 요청 → 리뷰 범위 승인)는 기존 판단 경로 그대로다. JVM 144개 통과 |
+| 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
