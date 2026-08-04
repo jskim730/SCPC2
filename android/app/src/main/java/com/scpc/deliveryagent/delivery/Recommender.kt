@@ -240,8 +240,15 @@ class Recommender(private val catalog: SyntheticCatalog) {
         val unusable = catalog.unusableValueTokens()
 
         // A recommendation anchors the order on a main menu. Side menus are added
-        // as accompanying lines from their own surface, not ranked against mains.
-        return catalog.mainMenus(restaurant)
+        // as accompanying lines from their own surface, not ranked against mains —
+        // unless the user named one, in which case it is the thing being asked
+        // for. "김밥" used to reach no candidate at all, and the offer fell back to
+        // every restaurant's mains: an answer about 국밥 and 마라탕 to a question
+        // about 김밥.
+        return (
+            catalog.mainMenus(restaurant) +
+                catalog.sideMenus(restaurant).filter { namedRank(conditions, it.token) > 0 }
+            )
             .map { item ->
                 val reasons = mutableListOf<Reason>()
                 var score = 0

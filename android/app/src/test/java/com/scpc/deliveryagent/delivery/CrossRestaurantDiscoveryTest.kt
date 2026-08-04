@@ -153,6 +153,41 @@ class CrossRestaurantDiscoveryTest {
     }
 
     @Test
+    fun `asking for a side reaches the restaurants that sell it`() {
+        // Candidates anchor on main menus, so a side had nothing to match and the
+        // offer fell back to every restaurant's mains — an answer about 국밥 and
+        // 마라탕 to a question about 김밥.
+        val found = recommender.discoveries(core(asprEnabled = true).state(), conditionsOf("김밥"))
+
+        assertTrue("something is offered", found.isNotEmpty())
+        found.forEach { discovery ->
+            assertEquals(
+                "every row is of the kind asked for: ${discovery.candidate.valueToken}",
+                "menutype.side_rice",
+                catalog.menuTypeOf(discovery.candidate.valueToken)?.token,
+            )
+        }
+    }
+
+    @Test
+    fun `naming nothing still offers main dishes only`() {
+        // The widening is conditional: with no dish or kind named, sides stay off
+        // the offer and are added from the draft as accompanying lines.
+        val found = recommender.discoveries(
+            core(asprEnabled = true).state(),
+            Recommender.Conditions.NONE,
+        )
+
+        found.forEach { discovery ->
+            assertTrue(
+                "${discovery.candidate.valueToken} is a main",
+                catalog.mainMenus(discovery.restaurant)
+                    .any { it.token == discovery.candidate.valueToken },
+            )
+        }
+    }
+
+    @Test
     fun `a stated budget keeps over-budget restaurants out of the offer`() {
         val state = core(asprEnabled = true).state()
 
