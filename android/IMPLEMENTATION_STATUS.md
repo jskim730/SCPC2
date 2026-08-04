@@ -1,4 +1,4 @@
-# 구현 상태와 남은 작업
+﻿# 구현 상태와 남은 작업
 
 최종 갱신: 2026-08-03 KST · 프로젝트 root: `android/` · 저장소: `github.com/jskim730/SCPC2`
 
@@ -9,7 +9,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| JVM 단위 테스트 | **159개 전부 통과** (debug·release 각각, emulator 불필요) |
+| JVM 단위 테스트 | **162개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | `ProbeParityTest` (기기 instrumentation) | **7개 전부 통과** (2026-08-04, emulator). probe 진입점↔어댑터↔core 이음매 실기기 확인 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
@@ -312,7 +312,7 @@ slot을 제공할 때만 식당을 넘는다.
 품절·가격변경은 코드 분기가 아니라 `catalog_events`다. `ProductSurface.applyCatalogEvent`가 그 slot
 하나에만 더 높은 authority로 전달하므로 본 메뉴와 독립 option은 보존된다.
 
-## 검증 — JVM 159개, emulator 불필요
+## 검증 — JVM 162개, emulator 불필요
 
 | 파일 | 개수 | 내용 |
 |---|---:|---|
@@ -321,7 +321,7 @@ slot을 제공할 때만 식당을 넘는다.
 | `core/ClaimOffComparisonTest.kt` | 6 | VIL paired 비교, guardrail 0 위반, arm state 완전 격리 |
 | `delivery/SyntheticCatalogTest.kt` | 10 | shipped asset byte로 불변조건 검사, menu type·line slot authoring, digest 결정성, 개인정보 유사 label 부재, 잘못된 catalog 거부 |
 | `delivery/ProductFlowProbeTest.kt` | 8 | 제품 기준 E1–E4 완주, 가격·예상시간, 항목 단위 품절 부분복구, 예산 초과 `ABSTAIN`, 재시작 연속성, 첫 식당 선택 즉시 추천 후보 |
-| `delivery/ChatIntakeTest.kt` | 19 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성, **조건 발화 자체가 후보 요청** |
+| `delivery/ChatIntakeTest.kt` | 22 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성, **조건 발화 자체가 후보 요청** |
 | `delivery/MultiLineDraftTest.kt` | 10 | 두 메뉴 두 line, 같은 메뉴 옵션 분리, line 지시 우선, 수량·총액, 항목 제거·부활 차단, line ID 불재사용, 단일 commit, 항목 단위 품절, product step digest 연속성 |
 | `delivery/ScopedPreferenceTest.kt` | 9 | override > 유형 > 전역 우선순위, authored type만 식당 간 전달, stable slot 제한, 범위별 철회·삭제·정정 독립, 범위 표시 |
 | `delivery/ReviewMemoryTest.kt` | 20 | 리뷰 읽기, 동의 전 무변경, 범위 선택지 제한, scoped 승격·같은 쌍만 적용·유형 전달, review version 소유권, 최신 직접 지시·정정 보존, 독립 outcome 격리, 평가 요청 원자적 예약·도착·만료·응답 해소, 다중 항목 대상 확정 |
@@ -462,6 +462,37 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
 |---|---|
 | 온디바이스 소형 LLM | APP.apk 300–800 MB(번들 필수. 첫 실행 다운로드는 OFFLINE 요구와 충돌), 모델 라이선스 신고, 기기 간 출력 동일성 미보장. sub-1B 한국어 구어체에서 one-off/stable·부정·범위 구분이 불안정한데 그 오추출은 기억 계약 위반처럼 보인다. 채점 경로가 건드리지 않는 대형 컴포넌트는 C2(불필요한 복잡성 부재)·C4(resource trade-off) 감점 소재 |
 | 우리 backend + 클라우드 | endpoint 상시가동 의무(08-05~심층검증), domain·전송데이터 신고, 판단당 4회·전체 60회 계수 구현, 장애 시 G3/G5 위험 |
+
+### 임베딩·코사인 유사도 fallback — 측정 후 기각 (2026-08-04)
+
+기술노트 §"확장 경로"가 다음 단계로 적어둔 방식을 실제로 재볼 필요가 있었다. 신경망 임베딩(A안)과
+**모델 파일 없는 결정적 유사도**(B안: 카탈로그 표현으로 문자 2–3gram 벡터를 만들어 코사인 비교)를
+나눠 검증했고, **B안을 실제 카탈로그 174개 표현으로 돌려 측정**했다.
+
+| 임계값 | 발동 | 그중 다른 값을 가리킴 |
+|---:|---:|---:|
+| 0.5 | 77 | 24 (31%) |
+| 0.7 | 23 | 5 (22%) |
+| 0.8 | 16 | 2 (12%) |
+| 0.9 | 10 | 0 |
+
+최근접 이웃이 다른 값 토큰인 경우가 **89/174 (51.1%)**, 그리고 유사도 1·2위가 정반대 뜻이다 —
+`0.882 "매운 떡볶이"↔"안 매운 떡볶이"`, `0.745 "수저 필요 없어"↔"수저 필요"`. 한국어 부정이
+`안`·`없어`·`않게`처럼 짧은 접사로 붙는 이상 **부정형과 긍정형이 문자 n-gram 공간에서 가장 가까워지는
+것은 구조적**이고, 극성은 주문에서 틀리면 안 되는 축이다. 0.9에서만 오답이 사라지는데 그때 발동하는
+10건은 이미 결정적 매칭이 잡는 근사 중복이라 **쓸모 있는 동작점이 없다.**
+
+`condition.budget`·`condition.eta`는 phrases가 0개다(숫자를 `readAmounts`가 읽는다). 가이드 E1·E2
+문장이 기대는 두 슬롯을 표현 유사도가 **구조적으로 도울 수 없다**는 뜻이다.
+
+A안은 별도로 실격이다. `modelConfigured`를 뒤집으면 `ReleaseIdentity`가 `NOT_USED` 대신 `mbf-v1:`을
+내보내 **오늘 기록된 공식 13-step 결과와 모순**되고 `ProbeParityTest`가 깨지며, 모델 라이선스 신고
+의무가 생긴다. 얻는 것은 0이다 — `ProductionProbeAdapter`는 `delivery/`를 import하지 않아 채점 경로에
+intake가 아예 닿지 않는다(`intake.read()` 호출 지점은 `ProductSurface.say()` 하나, `say()` 호출 지점은
+채팅 입력창 하나).
+
+대신 같은 조사에서 **실제 파서 결함 2건**을 찾아 고쳤다 — 아래 변경 기록 참조. 이해 폭을 넓히는
+투자로는 그쪽이 훨씬 값이 컸다.
 
 파서 실패는 `ASK`로 수렴해 설계된 안전 동작을 시연한다. `PreferenceIntake`는 model 교체 지점으로
 유지하고(`modelConfigured=false`, inference 0회) 본선 진출 뒤 재검토할 수 있다. 기술노트에는
@@ -629,6 +660,8 @@ Wellbeing과 System UI가 연달아 ANR을 냈으며 그 대화상자가 포커�
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
 | 2026-08-03 | 에뮬레이터에서 첫 식당 선택 뒤 추천 카드가 나오지 않던 결함 수정. `RESET_AND_START`가 이전 run을 비운 뒤 새 step의 목표·대상 context를 적용하도록 순서를 고치고, `startNewOrder`가 `TARGET_ENTITY`를 명시한다. reset 직후 context와 채팅 입력 전 추천 후보를 고정하는 회귀 테스트 2개 추가. debug·release JVM 각 152개 및 `assembleDebug` 통과 |
 | 2026-08-04 | **메뉴 이름을 타이핑하면 주문 항목이 담기지 않던 결함 수정.** `option.main`의 kind가 `menu_option`이라, 재사용 범위를 말하지 않은 문장(`마라탕으로 할게`)에서 파서가 메뉴에도 "이번 주문만 적용할까요, 기억할까요?" 질문을 붙였고 `say`가 그 값을 미해결로 보고 버려 `addLine` 분기에 도달하지 못했다. 메뉴 slot을 범위 질문 대상에서 제외(`NaturalLanguage.read`). `INSTALL_AND_USE_GUIDE` §3이 심사관에게 그대로 입력하라고 지시하는 E4 문장 2개가 이 경로였고, 기존 대본 테스트는 그 자리에서 `addLine(token)`을 직접 불러 파서를 우회했기 때문에 잡히지 않았다. 타이핑만으로 검증하는 `GuideScriptSentencesTest` 신설. debug·release JVM 각 154개 통과 |
+| 2026-08-04 | **파서 결함 2건 수정.** ① 금액·시간 정규식이 `원`·`분` 없는 맨 숫자도 매칭하는데 `readAmounts`가 첫 free 매칭만 보고 파싱 실패 시 슬롯을 포기해, 앞에 수량이 오면(`2인분 1만5천원 이하로`) 예산이 사라졌다. 같은 문장의 다른 슬롯이 해소되면 되묻지도 않아 **제약이 조용히 증발**한다. 다음 후보를 보도록 고쳤다. ② `findGapped`가 이미 다른 해석이 가져간 글자를 간격 예산에 계산해, 범위 부사가 값 사이에 오면(`고수는 항상 빼줘`, `밥은 계속 적게`) 값을 통째로 놓쳤다 — `항상`·`계속`은 카탈로그가 authoring한 표현이라 앱이 안다고 해놓고 실패하던 셈이다. 소비된 글자는 간격에서 제외하고 free 검사도 매칭된 단어에만 적용하도록 고쳤다. 회귀 테스트 3개 추가, debug·release JVM 각 162개 통과 |
+| 2026-08-04 | 임베딩·코사인 유사도 fallback을 실측 후 기각. 실제 카탈로그로 돌린 결과 최근접 이웃의 51.1%가 다른 값이고 유사도 상위가 정반대 뜻이었다. "열린 결정" 절 참조. 기술노트 §11의 어휘 규모(값 80·리뷰 15)도 실측값(슬롯 값 143·메뉴 31·리뷰 21)으로 정정 — `catalog.json`이 `SOURCE.zip`에 동봉되므로 스크립트로 반증 가능한 숫자였다 |
 | 2026-08-04 | **V1–V4 변형을 공식 Runner에서 전부 완주** (13·14·18·26 step, 모두 `COMPLETED`). `tools/make_probe_variants.py` 신설 — 계획서 §1의 공통 불변조건을 기계 검사로 옮겨 공식 schema 검증과 함께 파일을 쓰기 전에 돌린다. 실제로 V2에서 event id를 바꾸며 `REPLAY_OF_EVENT_ID`·`OLDER_EVENT_ID` 갱신을 빠뜨린 결함을 emulator를 태우기 전에 잡았다. 결과는 "변형 실행 결과" 절 |
 | 2026-08-04 | **공식 Runner 13-step을 debug APK로 완주.** 샘플 APK(Phase 1)·우리 APK(Phase 2) 모두 `run_status: COMPLETED`·`step_count: 13`. 우리 결과는 evidence 35건(샘플 26건)이고 결정 상태에 **`WAIT`와 `ABSTAIN`이 실제로 나타났다** — 샘플은 `ACT`·`CONFIRMED_COMPLETE`만 낸다. 공개 입력의 `SET_NETWORK OFFLINE` 주입에 설계대로 멈춘 것이 공식 파이프라인을 통과해 관측됐다. `model_backend_frozen_id: NOT_USED`·`cumulative_invocations: 0`도 공식 결과물에 기록됐다. 남은 것은 서명된 APK로 1회 반복 |
 | 2026-08-04 | **공식 Kit의 Windows 비호환 2건 발견·우회.** ① `apk_release_info.py`가 SDK 도구를 확장자 없는 이름으로 찍는데 Windows SDK는 `.bat`만 배포하고 CreateProcess가 이를 거부한다(`WinError 193`) → fixture 생성 자체가 시작 불가. ② `runnerctl.py`의 `collect()`가 디렉터리를 `fsync`하는데 Windows가 거부하고, 그 예외가 롤백 블록을 타 **방금 수집한 결과 파일을 전부 지운다** — 13 step은 실제로 다 돌았는데도 아무것도 안 남는다. `tools/win_fixture_shim.py`·`tools/win_runner_shim.py`가 공식 코드를 수정하지 않고 import해 프로세스 실행과 디렉터리 fsync만 교정한다. 런북 0-4의 `apkanalyzer -h` 확인은 shell이 PATHEXT로 해결하므로 통과해 이 문제를 가린다 |

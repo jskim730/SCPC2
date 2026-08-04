@@ -1,4 +1,4 @@
-# MISSION_AND_TECHNICAL_NOTE — 초안
+﻿# MISSION_AND_TECHNICAL_NOTE — 초안
 
 제품: 개인 배달 주문 에이전트 · 참가자: First_penguin · 초안 갱신: 2026-08-03 KST
 
@@ -235,8 +235,8 @@ VIL을 claim-off보다 낮추는 것이다. guardrail 위반 0이 전제이며, 
 ## 11. model·backend·runtime freeze
 
 - **결정적 intake는 의도된 설계다** (공식 규칙 §8 "deterministic 구현도 허용" 명문). 자연어
-  해석은 catalog가 authoring한 어휘(값 표현 80·리뷰 표현 15·모호 표현 6)에 대한 어절 단위 gapped
-  매칭이며, 해석 실패는 항상 `ASK`로 수렴해 설계된 안전 동작이 된다.
+  해석은 catalog가 authoring한 어휘(슬롯 값 표현 143·메뉴 표현 31·리뷰 표현 21·모호 표현 6)에 대한
+  어절 단위 gapped 매칭이며, 해석 실패는 항상 `ASK`로 수렴해 설계된 안전 동작이 된다.
 - 선택 이유: ① 채점 경로(Probe)는 불투명 token만 보내므로 model이 기여할 자리가 없고, ② paired
   comparison은 양 arm 동일 구성을 요구하며, ③ 재현성(같은 입력 → 모든 기기에서 같은 출력)·
   오프라인 완주·APK 크기·라이선스 신고가 전부 단순해진다. 무거운 backend는 동결·가용성 부담만
@@ -282,7 +282,7 @@ arm 동일 구성을 요구한다. 수십 MB의 런타임·모델을 싣는 대�
 
 ## 12. Claim → 검증 근거 매핑 (요약)
 
-JVM 144개(에뮬레이터 불필요) + 기기 검증. 대표 매핑:
+JVM 162개(에뮬레이터 불필요) + 기기 검증. 대표 매핑:
 
 | 주장 | 근거 |
 |---|---|

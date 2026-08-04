@@ -319,9 +319,16 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
         catalog.slots.forEach { slot ->
             when (slot.valueKind) {
                 ValueKind.AMOUNT -> {
-                    val found = AMOUNT.findAll(text).firstOrNull { isFree(consumed, it.range) }
+                    // A quantity can precede the amount — "2인분 1만5천원 이하로". The
+                    // pattern also matches a bare number, so taking only the first free
+                    // match and abandoning the slot when it does not parse dropped the
+                    // amount the user actually stated. A dropped budget is a dropped
+                    // constraint, and it disappears silently whenever some other slot in
+                    // the same sentence did resolve.
+                    val (found, amount) = AMOUNT.findAll(text)
+                        .filter { isFree(consumed, it.range) }
+                        .firstNotNullOfOrNull { match -> amountOf(match)?.let { match to it } }
                         ?: return@forEach
-                    val amount = amountOf(found) ?: return@forEach
                     consume(consumed, found.range.first, found.value.length)
                     into += ReadValue(
                         scopeToken = slot.scopeToken,
@@ -334,9 +341,11 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
                 }
 
                 ValueKind.DURATION_MINUTES -> {
-                    val found = DURATION.findAll(text).firstOrNull { isFree(consumed, it.range) }
+                    // Same reason as AMOUNT above.
+                    val (found, minutes) = DURATION.findAll(text)
+                        .filter { isFree(consumed, it.range) }
+                        .firstNotNullOfOrNull { match -> minutesOf(match)?.let { match to it } }
                         ?: return@forEach
-                    val minutes = minutesOf(found) ?: return@forEach
                     consume(consumed, found.range.first, found.value.length)
                     into += ReadValue(
                         scopeToken = slot.scopeToken,
@@ -400,16 +409,24 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
             val first = text.indexOf(parts[0], searchFrom)
             if (first < 0) return null
             var cursor = first + parts[0].length
+            val words = mutableListOf(first until cursor)
             var matched = true
             for (index in 1 until parts.size) {
                 val at = text.indexOf(parts[index], cursor)
-                if (at < 0 || at - cursor > maxGap) {
+                // Characters another reading already claimed are not intervening
+                // noise. "고수는 항상 빼줘" states its reuse scope between the value's
+                // own words, and charging `항상` to the gap budget lost the value
+                // outright even though every word of it was present.
+                if (at < 0 || (cursor until at).count { !consumed[it] } > maxGap) {
                     matched = false
                     break
                 }
+                words += at until (at + parts[index].length)
                 cursor = at + parts[index].length
             }
-            if (matched && isFree(consumed, first until cursor)) return Span(first, cursor)
+            // Only the matched words themselves have to be unclaimed; what sits
+            // between them belongs to whichever reading already took it.
+            if (matched && words.all { isFree(consumed, it) }) return Span(first, cursor)
             searchFrom = first + 1
         }
         return null

@@ -28,6 +28,7 @@ class ChatIntakeTest {
     private val intake = RuleBasedIntake(catalog)
     private val daon = catalog.restaurant("restaurant.daon")!!
     private val ongi = catalog.restaurant("restaurant.ongi")!!
+    private val marahyang = catalog.restaurant("restaurant.marahyang")!!
 
     private fun surface(): ProductSurface = ProductSurface(
         ProductionCore(
@@ -91,6 +92,54 @@ class ChatIntakeTest {
     fun `reads a duration`() {
         val read = intake.read("30분 안에 오는 걸로", context(daon))
         assertEquals("eta.30", read.values.first { it.scopeToken == Slots.ETA }.valueToken)
+    }
+
+    @Test
+    fun `an amount is still read when another number comes first`() {
+        fun budgetOf(text: String): String? = intake.read(text, context(daon))
+            .values.firstOrNull { it.scopeToken == Slots.BUDGET }?.valueToken
+
+        // The amount pattern also matches a bare number, so a quantity in front of
+        // the budget used to claim the slot and the stated budget vanished. It
+        // vanished silently whenever some other slot in the same sentence resolved,
+        // which is the dangerous shape: a dropped budget is a dropped constraint.
+        assertEquals("budget.15000", budgetOf("2인분 1만5천원 이하로"))
+        assertEquals("budget.20000", budgetOf("3개 담고 2만원 이하로"))
+    }
+
+    @Test
+    fun `a budget and a duration survive a leading quantity together`() {
+        val read = intake.read("떡볶이 2개랑 2만원 이하로 30분 안에", context(daon))
+
+        assertEquals(
+            "budget.20000",
+            read.values.first { it.scopeToken == Slots.BUDGET }.valueToken,
+        )
+        assertEquals(
+            "eta.30",
+            read.values.first { it.scopeToken == Slots.ETA }.valueToken,
+        )
+    }
+
+    @Test
+    fun `a reuse scope stated between the value's own words still reads both`() {
+        // 항상 and 계속 are reuse-scope phrases the catalog authors, so a person who
+        // uses one mid-sentence is speaking the vocabulary the app advertises. The
+        // scope word is consumed before phrases are matched, and charging those
+        // characters to the gap budget used to lose the value outright.
+        val cilantro = intake.read("고수는 항상 빼줘", context(marahyang))
+        assertEquals(
+            "cilantro.exclude",
+            cilantro.values.first { it.scopeToken == Slots.CILANTRO }.valueToken,
+        )
+        assertEquals(ValueScope.REMEMBER_FOR_REUSE, cilantro.values.first().scope)
+
+        val rice = intake.read("밥은 계속 적게", context(daon))
+        assertEquals(
+            "rice.small",
+            rice.values.first { it.scopeToken == Slots.RICE }.valueToken,
+        )
+        assertEquals(ValueScope.REMEMBER_FOR_REUSE, rice.values.first().scope)
     }
 
     @Test
