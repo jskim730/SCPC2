@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
 import com.scpc.deliveryagent.core.AsprEngine
+import com.scpc.deliveryagent.core.CommitState
 import com.scpc.deliveryagent.core.DraftField
 import com.scpc.deliveryagent.core.FieldStatus
 import com.scpc.deliveryagent.core.ProductionState
@@ -76,6 +77,17 @@ class MainActivity : Activity() {
     private var discoveries = listOf<Recommender.Discovery>()
     private var exploreConditions = Recommender.Conditions.NONE
     private val exploreSentences = mutableListOf<String>()
+    /**
+     * The recorded order this conversation can still rate, and the last one seen.
+     *
+     * A review names a restaurant and a menu, so it has to belong to the order it
+     * is about. Keeping the card alive on nothing but "some order exists" meant
+     * that after moving on to the next restaurant it was still on screen, ready to
+     * file a review of the previous meal against the new one.
+     */
+    private var reviewableActionId: String? = null
+    private var lastSeenActionId: String? = null
+
     private var reviewRating: RatingValue? = null
     private var reviewOffers = listOf<ReviewCandidate>()
     private var reviewId: String? = null
@@ -119,6 +131,7 @@ class MainActivity : Activity() {
         exploreSentences.clear()
         firstStored = emptyList()
         scopeChanges = emptyList()
+        reviewableActionId = null
         editingFieldId = null
         reviewRating = null
         reviewOffers = emptyList()
@@ -283,10 +296,18 @@ class MainActivity : Activity() {
         if (exploration.conditions == Recommender.Conditions.NONE &&
             exploration.utterance.unrecognised.isNotEmpty()
         ) {
+            // Saying only that it failed leaves the user guessing at the vocabulary.
+            // The examples are the app's own — the same phrases the guide types.
             chat += ChatLine(
                 "에이전트:",
                 "'" + exploration.utterance.unrecognised.joinToString(" ") +
-                    "'는 이해하지 못했습니다. 그래도 고를 수 있는 것을 보여드릴게요.",
+                    "'는 이해하지 못했습니다. 이렇게 말씀하시면 알아듣습니다:\n" +
+                    "· 금액 — 1만5천원 이하로 / 20000원까지\n" +
+                    "· 시간 — 30분 안에\n" +
+                    "· 종류 — 따뜻한 국물 / 국물 없는\n" +
+                    "· 메뉴 이름 — 마라탕 / 떡볶이 / 김밥\n" +
+                    "· 옵션 — 맵지 않게 / 고수 빼고\n" +
+                    "아래에서 식당을 직접 고르셔도 됩니다.",
             )
         }
         chat += ChatLine(
@@ -432,6 +453,17 @@ class MainActivity : Activity() {
         EvaluationNotification.sync(this, surface.pendingEvaluationRequest())
         openQuestions = AsprEngine.openConfirmationIds(state)
 
+        // A newly recorded order is the one this conversation can rate, however it
+        // was placed — the draft's button or a typed "이대로 주문".
+        state.actions.values
+            .filter { it.commitState == CommitState.COMMITTED }
+            .maxByOrNull { it.seq }
+            ?.takeIf { it.actionId != lastSeenActionId }
+            ?.let {
+                lastSeenActionId = it.actionId
+                reviewableActionId = it.actionId
+            }
+
         appBarHost.removeAllViews()
         appBarHost.addView(appBar())
         content.removeAllViews()
@@ -488,7 +520,9 @@ class MainActivity : Activity() {
             Ui.chatLine(
                 this,
                 "에이전트:",
-                "안녕하세요. 어디서 주문할까요?\n먹고 싶은 것을 바로 말씀하셔도 됩니다.",
+                "안녕하세요. 어디서 주문할까요?\n" +
+                    "먹고 싶은 것을 바로 말씀하셔도 됩니다 — " +
+                    "'마라탕', '1만5천원 이하로 따뜻한 국물', '30분 안에 맵지 않게'처럼요.",
             ),
         )
         content.addView(
@@ -828,18 +862,34 @@ class MainActivity : Activity() {
         val restaurant = currentRestaurant() ?: return
         if (state.actions.isEmpty()) return
 
-        // The rating card is a question, and a question that has been answered
-        // stops being asked. It appears when a request to rate the order has
-        // actually arrived, and it leaves as soon as the review is in — what was
-        // written afterwards lives in 내 취향과 기억, not in the middle of the
-        // thread where it pushed the next order off the screen.
-        val requested = surface.pendingEvaluationRequest()
+        // A question that has been answered stops being asked, so the card leaves
+        // once the review is in — what was written afterwards lives in 내 취향과
+        // 기억, not in the middle of the thread where it pushed the next order off
+        // the screen.
+        //
+        // What keeps it open is the order, not the notice. The arrived request is a
+        // passing thing by design — it expires in a few steps so it can never gate
+        // the next order — and tying the card to it meant a person who took a moment
+        // before rating found the way to do it had quietly closed. So the card
+        // stands until the last recorded order has been reviewed, and the notice
+        // only changes what the agent says above it.
         val settlingReview = reviewNeedsTarget || reviewOffers.isNotEmpty()
-        if (!requested && !settlingReview) return
+        val rateable = reviewableActionId
+        val reviewed = rateable == null || state.reviews.any { it.actionId == rateable }
+        if (reviewed && !settlingReview) return
 
-        if (requested) {
+        val requested = surface.pendingEvaluationRequest()
+        if (!reviewed) {
             content.addView(
-                Ui.chatLine(this, "에이전트:", "식사는 어떠셨어요? 별점과 한 줄 평가를 남겨 주세요."),
+                Ui.chatLine(
+                    this,
+                    "에이전트:",
+                    if (requested) {
+                        "식사는 어떠셨어요? 별점과 한 줄 평가를 남겨 주세요."
+                    } else {
+                        "주문을 기록했습니다. 드시고 나서 평가를 남겨 주세요."
+                    },
+                ),
             )
             val rated = reviewRating
             content.addView(

@@ -150,12 +150,21 @@ class Recommender(private val catalog: SyntheticCatalog) {
         val traits: Set<String>,
         val budget: Int?,
         val etaLimitMinutes: Int?,
+        /**
+         * Dishes the user named by their own words.
+         *
+         * Naming one is not a trait to rank every dish by — it is the answer. It
+         * only means anything before a restaurant is chosen, where it says which
+         * restaurants to put in front of the user.
+         */
+        val namedMenus: Set<String> = emptySet(),
     ) {
         /** Union of traits, and the tighter of each limit — as `DraftPricing` does. */
         operator fun plus(other: Conditions) = Conditions(
             traits = traits + other.traits,
             budget = listOfNotNull(budget, other.budget).minOrNull(),
             etaLimitMinutes = listOfNotNull(etaLimitMinutes, other.etaLimitMinutes).minOrNull(),
+            namedMenus = namedMenus + other.namedMenus,
         )
 
         companion object {
@@ -197,6 +206,10 @@ class Recommender(private val catalog: SyntheticCatalog) {
                     etaLimitMinutes = utterance.values
                         .mapNotNull { catalog.value(it.valueToken)?.etaLimitMinutes }
                         .minOrNull(),
+                    namedMenus = utterance.values
+                        .filter { it.scopeToken == Slots.MAIN }
+                        .map { it.valueToken }
+                        .toSet(),
                 )
         }
     }
@@ -320,7 +333,7 @@ class Recommender(private val catalog: SyntheticCatalog) {
     ): List<Discovery> = catalog.restaurants
         .flatMap { restaurant ->
             candidates(state, restaurant, Int.MAX_VALUE, conditions)
-                .map { candidate -> Discovery(restaurant, candidate) }
+                .map { candidate -> Discovery(restaurant, candidate).named(conditions) }
         }
         // The per-restaurant chain, applied across restaurants. It ends on
         // valueToken, which SyntheticCatalog requires unique across every slot
@@ -328,6 +341,10 @@ class Recommender(private val catalog: SyntheticCatalog) {
         // every run and the same in both comparison arms.
         .sortedWith(
             compareBy<Discovery> { it.candidate.blockedBy != null }
+                // A dish the user named by name comes before anything scoring
+                // could put there, and its own kind comes next: someone who says
+                // "마라탕" is asking who serves it, then what else is like it.
+                .thenByDescending { namedRank(conditions, it.candidate.valueToken) }
                 .thenByDescending { it.candidate.score }
                 .thenByDescending { it.candidate.ratingAdjust }
                 .thenBy { it.candidate.amount }
@@ -336,6 +353,42 @@ class Recommender(private val catalog: SyntheticCatalog) {
         )
         .distinctBy { it.restaurant.entityToken }
         .take(limit)
+
+    /**
+     * 2 for a dish the sentence named, 1 for one of the same authored kind, 0
+     * otherwise. Naming a dish is an answer, not a trait, so it is ranked here
+     * rather than scored alongside conditions.
+     */
+    private fun namedRank(conditions: Conditions, menuToken: String): Int {
+        if (conditions.namedMenus.isEmpty()) return 0
+        if (menuToken in conditions.namedMenus) return 2
+        val type = catalog.menuTypeOf(menuToken)?.token ?: return 0
+        val sameKind = conditions.namedMenus.any { catalog.menuTypeOf(it)?.token == type }
+        return if (sameKind) 1 else 0
+    }
+
+    /** Says on the row itself why a named dish, or its kind, is at the top. */
+    private fun Discovery.named(conditions: Conditions): Discovery =
+        when (namedRank(conditions, candidate.valueToken)) {
+            2 -> copy(
+                candidate = candidate.copy(
+                    reasons = listOf(Reason("말한 메뉴", "말씀하신 메뉴입니다")) + candidate.reasons,
+                ),
+            )
+
+            1 -> copy(
+                candidate = candidate.copy(
+                    reasons = listOf(
+                        Reason(
+                            "같은 종류",
+                            catalog.menuTypeOf(candidate.valueToken)?.label.orEmpty(),
+                        ),
+                    ) + candidate.reasons,
+                ),
+            )
+
+            else -> this
+        }
 
     /** `(평균 − 중간값) × n/(n+1)`; zero with no ratings of this exact pair. */
     private fun ratingAdjustOf(rating: Tally): Double {

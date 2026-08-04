@@ -263,7 +263,14 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
                 }
             }
         }
-        context.restaurant?.menu?.forEach { item ->
+        // Before a restaurant is picked, every restaurant's menu is in scope: the
+        // declared product answers "마라탕" with the restaurants that serve it, and
+        // indexing only the current restaurant's menu meant a dish named on the
+        // opening screen matched nothing at all. `requireUnambiguousPhrases` already
+        // holds a menu phrase to one menu across every restaurant, so widening the
+        // index here cannot make a phrase ambiguous.
+        val menus = context.restaurant?.menu ?: catalog.restaurants.flatMap { it.menu }
+        menus.forEach { item ->
             item.phrases.forEach { phrase ->
                 entries += phrase to PhraseTarget(Slots.MAIN, item.token)
             }

@@ -66,6 +66,48 @@ class CrossRestaurantDiscoveryTest {
     }
 
     @Test
+    fun `a dish named before any restaurant is read and offered first`() {
+        // The opening screen invites "먹고 싶은 것을 바로 말씀하셔도 됩니다", and a dish
+        // name is the most direct way anyone takes that up. Menu phrases used to be
+        // indexed only for the restaurant already chosen, so on that screen — where
+        // there is none — naming a dish matched nothing whatsoever.
+        val read = intake.read(
+            "마라탕",
+            IntakeContext(
+                restaurant = null,
+                offeredSlots = catalog.slots.map { it.scopeToken }.toSet(),
+            ),
+        )
+        assertEquals(
+            "menu.marahyang.malatang",
+            read.values.single { it.scopeToken == Slots.MAIN }.valueToken,
+        )
+
+        val found = recommender.discoveries(core(asprEnabled = true).state(), conditionsOf("마라탕"))
+        assertEquals(
+            "the dish the user named leads the offer",
+            "menu.marahyang.malatang",
+            found.first().candidate.valueToken,
+        )
+        assertTrue(
+            "and the row says why it is there",
+            found.first().candidate.reasons.any { it.badge == "말한 메뉴" },
+        )
+    }
+
+    @Test
+    fun `naming a dish also surfaces its own kind at another restaurant`() {
+        val found = recommender.discoveries(core(asprEnabled = true).state(), conditionsOf("마라탕"))
+
+        // 마라 떡볶이 is 마라 요리 at a different restaurant. Reaching it from the word
+        // 마라탕 is the cross-restaurant discovery the declaration promises.
+        assertTrue(
+            "same-kind dishes follow the named one (${found.map { it.candidate.valueToken }})",
+            found.any { it.candidate.valueToken == "menu.geumson.mala_tteok" },
+        )
+    }
+
+    @Test
     fun `a stated budget keeps over-budget restaurants out of the offer`() {
         val state = core(asprEnabled = true).state()
 
