@@ -158,6 +158,8 @@ class Recommender(private val catalog: SyntheticCatalog) {
          * restaurants to put in front of the user.
          */
         val namedMenus: Set<String> = emptySet(),
+        /** Kinds of food the sentence named, when it named no dish outright. */
+        val namedTypes: Set<String> = emptySet(),
     ) {
         /** Union of traits, and the tighter of each limit — as `DraftPricing` does. */
         operator fun plus(other: Conditions) = Conditions(
@@ -165,6 +167,7 @@ class Recommender(private val catalog: SyntheticCatalog) {
             budget = listOfNotNull(budget, other.budget).minOrNull(),
             etaLimitMinutes = listOfNotNull(etaLimitMinutes, other.etaLimitMinutes).minOrNull(),
             namedMenus = namedMenus + other.namedMenus,
+            namedTypes = namedTypes + other.namedTypes,
         )
 
         companion object {
@@ -210,6 +213,7 @@ class Recommender(private val catalog: SyntheticCatalog) {
                         .filter { it.scopeToken == Slots.MAIN }
                         .map { it.valueToken }
                         .toSet(),
+                    namedTypes = utterance.menuTypes.toSet(),
                 )
         }
     }
@@ -335,6 +339,14 @@ class Recommender(private val catalog: SyntheticCatalog) {
             candidates(state, restaurant, Int.MAX_VALUE, conditions)
                 .map { candidate -> Discovery(restaurant, candidate).named(conditions) }
         }
+        // Naming a dish or a kind of food is an answer, not a preference to rank
+        // by, so nothing outside it belongs in the offer. Padding the list to its
+        // usual length with 떡볶이 because only two restaurants serve 마라 answers a
+        // question the user did not ask. Shown only if it leaves something.
+        .let { all ->
+            val asked = all.filter { namedRank(conditions, it.candidate.valueToken) > 0 }
+            asked.ifEmpty { all }
+        }
         // The per-restaurant chain, applied across restaurants. It ends on
         // valueToken, which SyntheticCatalog requires unique across every slot
         // value and every restaurant's menu, so the order is total — the same
@@ -360,9 +372,12 @@ class Recommender(private val catalog: SyntheticCatalog) {
      * rather than scored alongside conditions.
      */
     private fun namedRank(conditions: Conditions, menuToken: String): Int {
-        if (conditions.namedMenus.isEmpty()) return 0
+        if (conditions.namedMenus.isEmpty() && conditions.namedTypes.isEmpty()) return 0
         if (menuToken in conditions.namedMenus) return 2
         val type = catalog.menuTypeOf(menuToken)?.token ?: return 0
+        // Naming a kind — "마라", "분식" — puts every dish of that kind ahead of the
+        // rest without pretending the user picked one of them.
+        if (type in conditions.namedTypes) return 1
         val sameKind = conditions.namedMenus.any { catalog.menuTypeOf(it)?.token == type }
         return if (sameKind) 1 else 0
     }

@@ -108,6 +108,51 @@ class CrossRestaurantDiscoveryTest {
     }
 
     @Test
+    fun `a kind of food is understood without naming a dish of it`() {
+        // "마라 먹고 싶어" is how people ask for this, and the catalog only knew the
+        // dish names — so the word that names the whole kind matched nothing.
+        val read = intake.read(
+            "마라 먹고 싶어",
+            IntakeContext(
+                restaurant = null,
+                offeredSlots = catalog.slots.map { it.scopeToken }.toSet(),
+            ),
+        )
+        assertEquals(listOf("menutype.mala"), read.menuTypes)
+        assertTrue(
+            "naming a kind is not choosing a dish",
+            read.values.none { it.scopeToken == Slots.MAIN },
+        )
+
+        val found = recommender.discoveries(
+            core(asprEnabled = true).state(),
+            conditionsOf("마라 먹고 싶어"),
+        )
+        assertTrue(
+            "every offer is of that kind (${found.map { it.candidate.valueToken }})",
+            found.all { catalog.menuTypeOf(it.candidate.valueToken)?.token == "menutype.mala" },
+        )
+    }
+
+    @Test
+    fun `a dish still outranks the kind it belongs to`() {
+        // 마라 is a prefix of 마라탕, so the longest-first index has to settle this:
+        // naming the dish must stay naming the dish.
+        val read = intake.read(
+            "마라탕",
+            IntakeContext(
+                restaurant = null,
+                offeredSlots = catalog.slots.map { it.scopeToken }.toSet(),
+            ),
+        )
+        assertEquals(
+            "menu.marahyang.malatang",
+            read.values.single { it.scopeToken == Slots.MAIN }.valueToken,
+        )
+        assertTrue("the kind is not also claimed", read.menuTypes.isEmpty())
+    }
+
+    @Test
     fun `a stated budget keeps over-budget restaurants out of the offer`() {
         val state = core(asprEnabled = true).state()
 

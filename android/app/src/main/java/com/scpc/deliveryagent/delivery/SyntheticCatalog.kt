@@ -163,6 +163,14 @@ data class MenuTypeDefinition(
      * and only where the current restaurant also offers the slot.
      */
     val stableOptionSlots: List<String>,
+    /**
+     * Ways a person names this whole kind of food — "마라", "분식", "국수".
+     *
+     * A kind is not a dish, so a phrase here never fills an order line. It says
+     * which dishes to put in front of someone who has not chosen a restaurant,
+     * which is the one place the distinction is useful.
+     */
+    val phrases: List<String> = emptyList(),
 )
 
 /** A pre-authored catalog change, such as one line going out of stock. */
@@ -558,7 +566,7 @@ class SyntheticCatalog private constructor(
                     "${catalogEvent.eventToken} references an unknown option slot"
                 }
             }
-            requireUnambiguousPhrases(slots, restaurants)
+            requireUnambiguousPhrases(slots, restaurants, menuTypes)
 
             val scopePhrases = root.getJSONObject("scope_phrases").let { json ->
                 ScopePhrases(
@@ -646,19 +654,25 @@ class SyntheticCatalog private constructor(
         private fun requireUnambiguousPhrases(
             slots: List<SlotDefinition>,
             restaurants: List<RestaurantDefinition>,
+            menuTypes: List<MenuTypeDefinition>,
         ) {
             val owners = mutableMapOf<String, String>()
+            fun claim(phrase: String, owner: String) {
+                val key = phrase.replace(WHITESPACE, "")
+                val existing = owners.put(key, owner)
+                require(existing == null || existing == owner) {
+                    "phrase '$phrase' is claimed by both $existing and $owner"
+                }
+            }
             val entries = slots.flatMap { slot -> slot.values.map { slot.scopeToken to it } } +
                 restaurants.flatMap { r -> r.menu.map { Slots.MAIN to it } }
             entries.forEach { (scopeToken, value) ->
-                value.phrases.forEach { phrase ->
-                    val key = phrase.replace(WHITESPACE, "")
-                    val owner = "$scopeToken/${value.token}"
-                    val existing = owners.put(key, owner)
-                    require(existing == null || existing == owner) {
-                        "phrase '$phrase' is claimed by both $existing and $owner"
-                    }
-                }
+                value.phrases.forEach { claim(it, "$scopeToken/${value.token}") }
+            }
+            // A kind of food shares the index with the dishes and options, so it
+            // has to obey the same rule: one phrase, one meaning.
+            menuTypes.forEach { type ->
+                type.phrases.forEach { claim(it, "menu_type/${type.token}") }
             }
         }
 
@@ -761,6 +775,9 @@ class SyntheticCatalog private constructor(
             stableOptionSlots = json.getJSONArray("stable_option_slots").let { array ->
                 (0 until array.length()).map { index -> token(array.getString(index)) }
             },
+            phrases = json.optJSONArray("phrases")?.let { array ->
+                (0 until array.length()).map { index -> label(array.getString(index)) }
+            }.orEmpty(),
         )
 
         private fun event(json: JSONObject): CatalogEvent {

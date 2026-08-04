@@ -153,6 +153,47 @@ class ChatIntakeTest {
     }
 
     @Test
+    fun `spiciness is read from the ordinary ways of asking for it`() {
+        fun spiceOf(text: String): String? = intake.read(text, context(daon))
+            .values.firstOrNull { it.scopeToken == Slots.SPICINESS }?.valueToken
+
+        // Each of these reached the app as "이해하지 못했습니다" while the catalog held
+        // only the noun forms.
+        assertEquals("spice.very_hot", spiceOf("매운음식 추천해줘"))
+        assertEquals("spice.very_hot", spiceOf("매운 음식"))
+        assertEquals("spice.very_hot", spiceOf("매운거 추천해줘"))
+        assertEquals("spice.very_hot", spiceOf("얼큰한 거"))
+        assertEquals("spice.mild", spiceOf("순한 걸로"))
+        assertEquals(
+            "the negation still wins over the bare word inside it",
+            "spice.mild",
+            spiceOf("안 매운 거 추천해줘"),
+        )
+    }
+
+    @Test
+    fun `a dish name is not eaten by the bare word inside it`() {
+        // 매운 떡볶이 is a dish; 매운 is now also a phrase on its own. Longest-first has
+        // to keep the dish whole. Read with no restaurant chosen, which is the
+        // context that has every menu in scope.
+        val read = intake.read(
+            "매운 떡볶이",
+            IntakeContext(
+                restaurant = null,
+                offeredSlots = catalog.slots.map { it.scopeToken }.toSet(),
+            ),
+        )
+        assertEquals(
+            "menu.bulkkot.hot",
+            read.values.single { it.scopeToken == Slots.MAIN }.valueToken,
+        )
+        assertTrue(
+            "and it does not also read a spiciness out of the dish's own name",
+            read.values.none { it.scopeToken == Slots.SPICINESS },
+        )
+    }
+
+    @Test
     fun `a stated reuse scope is read as stated`() {
         assertEquals(
             ValueScope.REMEMBER_FOR_REUSE,

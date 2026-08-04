@@ -103,6 +103,8 @@ data class Utterance(
     /** Slots the user referred to for an action, such as which permission to revoke. */
     val referencedSlots: List<String>,
     val unrecognised: List<String>,
+    /** Kinds of food the sentence named — "마라", "분식" — rather than one dish. */
+    val menuTypes: List<String> = emptyList(),
 ) {
     val understoodSomething: Boolean
         get() = values.isNotEmpty() || intents.isNotEmpty() || questions.isNotEmpty()
@@ -127,6 +129,7 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
         val intents = mutableListOf<Intent>()
         val values = mutableListOf<ReadValue>()
         val questions = mutableListOf<OpenQuestion>()
+        val menuTypes = mutableListOf<String>()
         val referencedSlots = mutableListOf<String>()
 
         // An action phrase is read first: "자동으로 정하지 마" is a withdrawal, not a
@@ -158,6 +161,18 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
 
         // Enumerated values, longest phrase first across every slot and menu.
         phraseIndex(context).forEach { (phrase, target) ->
+            val kind = target.menuTypeToken
+            if (kind != null) {
+                // A kind is not an order line, so it never occupies the menu slot
+                // and never competes with a dish the same sentence named. It only
+                // says which dishes to show first.
+                if (kind in menuTypes) return@forEach
+                val span = findGapped(normalised, phrase, consumed, INSTRUCTION_GAP)
+                    ?: return@forEach
+                consume(consumed, span.start, span.length)
+                menuTypes += kind
+                return@forEach
+            }
             val span = findGapped(normalised, phrase, consumed, INSTRUCTION_GAP) ?: return@forEach
             if (values.any { it.scopeToken == target.scopeToken }) return@forEach
             consume(consumed, span.start, span.length)
@@ -209,6 +224,7 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
             intents = intents,
             referencedSlots = referencedSlots.distinct(),
             unrecognised = leftoverWords(normalised, consumed),
+            menuTypes = menuTypes.distinct(),
         )
     }
 
@@ -251,7 +267,15 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
 
     // ------------------------------------------------------------- internals
 
-    private data class PhraseTarget(val scopeToken: String, val valueToken: String)
+    /**
+     * What one phrase points at: a slot value or a dish (both carry a
+     * [valueToken]), or a whole kind of food (which carries [menuTypeToken]).
+     */
+    private data class PhraseTarget(
+        val scopeToken: String,
+        val valueToken: String,
+        val menuTypeToken: String? = null,
+    )
 
     /** Every phrase the catalog knows, longest first, including this menu's items. */
     private fun phraseIndex(context: IntakeContext): List<Pair<String, PhraseTarget>> {
@@ -273,6 +297,18 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
         menus.forEach { item ->
             item.phrases.forEach { phrase ->
                 entries += phrase to PhraseTarget(Slots.MAIN, item.token)
+            }
+        }
+        // Kinds of food share this index rather than getting a pass of their own,
+        // so the longest-first order settles "마라탕" against "마라" the same way it
+        // settles every other overlap: the more specific phrase wins.
+        catalog.menuTypes.forEach { type ->
+            type.phrases.forEach { phrase ->
+                entries += phrase to PhraseTarget(
+                    scopeToken = Slots.MAIN,
+                    valueToken = "",
+                    menuTypeToken = type.token,
+                )
             }
         }
         return entries.filter { it.first.isNotBlank() }
