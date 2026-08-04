@@ -58,6 +58,11 @@ class MainActivity : Activity() {
     private var openQuestions = listOf<String>()
     private var pendingScope = listOf<com.scpc.deliveryagent.delivery.ReadValue>()
     private var candidates = listOf<Recommender.Candidate>()
+
+    /** 식당·메뉴 proposed for sentences typed before an order exists. */
+    private var discoveries = listOf<Recommender.Discovery>()
+    private var exploreConditions = Recommender.Conditions.NONE
+    private val exploreSentences = mutableListOf<String>()
     private var reviewRating: RatingValue? = null
     private var reviewOffers = listOf<ReviewCandidate>()
     private var reviewId: String? = null
@@ -99,6 +104,9 @@ class MainActivity : Activity() {
      */
     private fun clearTransientScreenState() {
         candidates = emptyList()
+        discoveries = emptyList()
+        exploreConditions = Recommender.Conditions.NONE
+        exploreSentences.clear()
         pendingScope = emptyList()
         editingFieldId = null
         reviewRating = null
@@ -230,12 +238,60 @@ class MainActivity : Activity() {
         chat += ChatLine("나:", message)
         val restaurant = currentRestaurant()
         if (restaurant == null) {
-            // Nothing to order against yet. The app never silently picks a
-            // restaurant for the user; the choice chips are right below.
-            chat += ChatLine("에이전트:", "주문할 식당을 먼저 선택해 주세요. 아래에서 고를 수 있습니다.")
+            exploreBeforeOrdering(message)
+            return
+        }
+        applySentence(restaurant, message)
+        render()
+    }
+
+    /**
+     * A sentence typed before any restaurant is chosen.
+     *
+     * The greeting invites exactly this — "먹고 싶은 것을 바로 말씀하셔도 됩니다" — and the
+     * declared long-horizon goal answers it with 식당·메뉴 candidates. Refusing until
+     * a restaurant had been picked discarded what the user said and made them say
+     * it a second time.
+     *
+     * Nothing is committed here: `explore` reads and ranks without reaching the
+     * core. Conditions accumulate, so a second sentence narrows the same list, and
+     * only tapping a card starts an order.
+     */
+    private fun exploreBeforeOrdering(message: String) {
+        val exploration = try {
+            surface.explore(message)
+        } catch (error: Exception) {
+            chat += ChatLine("에이전트:", "처리하지 못했습니다: ${error.message}")
             render()
             return
         }
+        exploreSentences += message
+        exploreConditions += exploration.conditions
+        discoveries = surface.exploreWith(exploreConditions)
+
+        exploration.utterance.questions.forEach { chat += ChatLine("에이전트:", it.question) }
+        if (exploration.conditions == Recommender.Conditions.NONE &&
+            exploration.utterance.unrecognised.isNotEmpty()
+        ) {
+            chat += ChatLine(
+                "에이전트:",
+                "'" + exploration.utterance.unrecognised.joinToString(" ") +
+                    "'는 이해하지 못했습니다. 그래도 고를 수 있는 것을 보여드릴게요.",
+            )
+        }
+        chat += ChatLine(
+            "에이전트:",
+            if (discoveries.isEmpty()) {
+                "지금 조건에 맞는 메뉴가 없습니다. 아래에서 식당을 직접 고르셔도 됩니다."
+            } else {
+                "조건에 맞는 식당과 메뉴입니다. 하나를 고르면 그 식당에서 주문이 시작됩니다."
+            },
+        )
+        render()
+    }
+
+    /** Applies one sentence to the order that already exists. */
+    private fun applySentence(restaurant: RestaurantDefinition, message: String) {
         val turn = try {
             surface.say(restaurant, message)
         } catch (error: Exception) {
@@ -271,7 +327,6 @@ class MainActivity : Activity() {
                 turn.utterance.questions.any { it.about == value.scopeToken }
         }
         candidates = turn.recommendations
-        render()
     }
 
     /** Answers the reuse-scope question for everything the last message left open. */
@@ -353,6 +408,9 @@ class MainActivity : Activity() {
         // The thread reads as a conversation: what was said, what the agent
         // proposes, and the one thing it is asking about right now.
         renderConversation()
+        // Proposals first when the user said what they wanted; the chip card stays
+        // below it as the direct route.
+        renderDiscoveries()
         renderRestaurantChoice()
         renderCandidates()
         renderNextQuestion(state)
@@ -488,6 +546,69 @@ class MainActivity : Activity() {
      * who picks a restaurant and says nothing still sees the menu, and one whose
      * words were not understood is never left with a dead end.
      */
+    /**
+     * 식당·메뉴 proposed for a sentence typed before any order exists.
+     *
+     * Each row names its restaurant, because that is the point being made: the
+     * user said what they wanted and did not have to find the restaurant first.
+     * The chip card stays below as the direct route.
+     */
+    private fun renderDiscoveries() {
+        if (currentRestaurant() != null || discoveries.isEmpty()) return
+        val card = Ui.agentCard(
+            context = this,
+            question = "이런 식당은 어떠세요?",
+            hint = "고르면 그 식당에서 주문이 시작되고, 말씀하신 조건이 그대로 반영됩니다.",
+            chips = emptyList(),
+        )
+        discoveries.forEach { discovery ->
+            val candidate = discovery.candidate
+            card.addView(
+                Ui.candidateRow(
+                    context = this,
+                    name = "${discovery.restaurant.name} · ${candidate.label}",
+                    meta = buildString {
+                        append(pricing.formatAmount(candidate.amount))
+                        append(" · ${candidate.estimateMinutes}분")
+                        if (candidate.rating.count > 0) append(" · ${candidate.rating.label()}")
+                        candidate.blockedBy?.let { append(" · 제외: $it") }
+                    },
+                    reasons = candidate.reasons.joinToString(" · ") { "${it.badge} ${it.detail}" },
+                    actionLabel = "여기서 시작",
+                    onTap = if (candidate.offerable) {
+                        { startOrderFrom(discovery) }
+                    } else {
+                        null
+                    },
+                ),
+            )
+        }
+        content.addView(card)
+    }
+
+    /**
+     * Starts the order the user picked out of the proposals.
+     *
+     * The sentences that produced the list are replayed at the chosen restaurant
+     * through the ordinary `say`, so the stated conditions land against a real
+     * target exactly as if they had been typed after picking. One path, not two —
+     * and nothing the user said has to be said again.
+     */
+    private fun startOrderFrom(discovery: Recommender.Discovery) {
+        val restaurant = discovery.restaurant
+        val sentences = exploreSentences.toList()
+        discoveries = emptyList()
+        exploreConditions = Recommender.Conditions.NONE
+        exploreSentences.clear()
+        chat += ChatLine("나:", "${restaurant.name} · ${discovery.candidate.label}")
+        scrollChatIntoView = true
+        actQuiet { surface ->
+            surface.startNewOrder(restaurant)
+            sentences.forEach { sentence -> applySentence(restaurant, sentence) }
+            surface.addLine(restaurant, discovery.candidate.valueToken)
+        }
+    }
+
     private fun renderCandidates() {
         val restaurant = currentRestaurant() ?: return
         val shown = candidates.ifEmpty {

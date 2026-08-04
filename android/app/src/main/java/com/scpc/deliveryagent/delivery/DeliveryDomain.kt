@@ -340,6 +340,46 @@ class ProductSurface(
         )
     }
 
+    /** What a sentence typed before any restaurant exists produced. */
+    data class Exploration(
+        val utterance: Utterance,
+        val conditions: Recommender.Conditions,
+        val discoveries: List<Recommender.Discovery>,
+    )
+
+    /**
+     * Answers a sentence with 식당·메뉴 candidates, before an order exists.
+     *
+     * The frozen declaration promises that saying what you want produces
+     * candidates and that the draft is built for the 식당·메뉴 the user then picks.
+     * Until one is picked there is no target to open an order against, so this
+     * reads and ranks and does nothing else: no `step`, therefore no operation
+     * reaching the core, no fact, no session, no ledger entry and no evidence
+     * file. Choosing a card is what starts the order, and it starts it through
+     * the same `startNewOrder` → `say` → `addLine` path every other route uses.
+     */
+    fun explore(message: String, limit: Int = 3): Exploration {
+        val utterance = intake.read(
+            message,
+            // No restaurant yet, so nothing can be ruled out for not being offered
+            // here; that judgement belongs to the restaurant the user picks.
+            IntakeContext(
+                restaurant = null,
+                offeredSlots = catalog.slots.map { it.scopeToken }.toSet(),
+            ),
+        )
+        val conditions = Recommender.Conditions.ofUtterance(catalog, utterance)
+        return Exploration(
+            utterance = utterance,
+            conditions = conditions,
+            discoveries = Recommender(catalog).discoveries(state(), conditions, limit),
+        )
+    }
+
+    /** The same ranking for conditions gathered over more than one sentence. */
+    fun exploreWith(conditions: Recommender.Conditions, limit: Int = 3): List<Recommender.Discovery> =
+        Recommender(catalog).discoveries(state(), conditions, limit)
+
     fun state(): ProductionState = core.state()
 
     fun startNewOrder(restaurant: RestaurantDefinition): StepOutcome {

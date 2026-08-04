@@ -9,7 +9,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| JVM 단위 테스트 | **162개 전부 통과** (debug·release 각각, emulator 불필요) |
+| JVM 단위 테스트 | **170개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | `ProbeParityTest` (기기 instrumentation) | **7개 전부 통과** (2026-08-04, emulator). probe 진입점↔어댑터↔core 이음매 실기기 확인 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
@@ -312,7 +312,7 @@ slot을 제공할 때만 식당을 넘는다.
 품절·가격변경은 코드 분기가 아니라 `catalog_events`다. `ProductSurface.applyCatalogEvent`가 그 slot
 하나에만 더 높은 authority로 전달하므로 본 메뉴와 독립 option은 보존된다.
 
-## 검증 — JVM 162개, emulator 불필요
+## 검증 — JVM 170개, emulator 불필요
 
 | 파일 | 개수 | 내용 |
 |---|---:|---|
@@ -321,6 +321,7 @@ slot을 제공할 때만 식당을 넘는다.
 | `core/ClaimOffComparisonTest.kt` | 6 | VIL paired 비교, guardrail 0 위반, arm state 완전 격리 |
 | `delivery/SyntheticCatalogTest.kt` | 10 | shipped asset byte로 불변조건 검사, menu type·line slot authoring, digest 결정성, 개인정보 유사 label 부재, 잘못된 catalog 거부 |
 | `delivery/ProductFlowProbeTest.kt` | 8 | 제품 기준 E1–E4 완주, 가격·예상시간, 항목 단위 품절 부분복구, 예산 초과 `ABSTAIN`, 재시작 연속성, 첫 식당 선택 즉시 추천 후보 |
+| `delivery/CrossRestaurantDiscoveryTest.kt` | 8 | **첫 문장에 식당·메뉴 후보로 답하는 경로.** 한 문장이 서로 다른 식당에 닿음, 예산이 초과 후보 제외, 같은 문장은 같은 순위, **양 arm 동일 순위**(추천이 VIL 이득을 오염시키지 않음), 이해 못한 문장에도 제안 유지, `explore`가 step을 실행하지 않음, 선택 시 말한 조건이 그대로 반영됨 |
 | `delivery/ChatIntakeTest.kt` | 22 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성, **조건 발화 자체가 후보 요청** |
 | `delivery/MultiLineDraftTest.kt` | 10 | 두 메뉴 두 line, 같은 메뉴 옵션 분리, line 지시 우선, 수량·총액, 항목 제거·부활 차단, line ID 불재사용, 단일 commit, 항목 단위 품절, product step digest 연속성 |
 | `delivery/ScopedPreferenceTest.kt` | 9 | override > 유형 > 전역 우선순위, authored type만 식당 간 전달, stable slot 제한, 범위별 철회·삭제·정정 독립, 범위 표시 |
@@ -660,6 +661,8 @@ Wellbeing과 System UI가 연달아 ANR을 냈으며 그 대화상자가 포커�
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
 | 2026-08-03 | 에뮬레이터에서 첫 식당 선택 뒤 추천 카드가 나오지 않던 결함 수정. `RESET_AND_START`가 이전 run을 비운 뒤 새 step의 목표·대상 context를 적용하도록 순서를 고치고, `startNewOrder`가 `TARGET_ENTITY`를 명시한다. reset 직후 context와 채팅 입력 전 추천 후보를 고정하는 회귀 테스트 2개 추가. debug·release JVM 각 152개 및 `assembleDebug` 통과 |
 | 2026-08-04 | **메뉴 이름을 타이핑하면 주문 항목이 담기지 않던 결함 수정.** `option.main`의 kind가 `menu_option`이라, 재사용 범위를 말하지 않은 문장(`마라탕으로 할게`)에서 파서가 메뉴에도 "이번 주문만 적용할까요, 기억할까요?" 질문을 붙였고 `say`가 그 값을 미해결로 보고 버려 `addLine` 분기에 도달하지 못했다. 메뉴 slot을 범위 질문 대상에서 제외(`NaturalLanguage.read`). `INSTALL_AND_USE_GUIDE` §3이 심사관에게 그대로 입력하라고 지시하는 E4 문장 2개가 이 경로였고, 기존 대본 테스트는 그 자리에서 `addLine(token)`을 직접 불러 파서를 우회했기 때문에 잡히지 않았다. 타이핑만으로 검증하는 `GuideScriptSentencesTest` 신설. debug·release JVM 각 154개 통과 |
+| 2026-08-04 | **첫 문장에 식당·메뉴 후보로 답한다 — 동결 선언의 빠진 절반을 채웠다.** `MISSION_LOCK.json`의 `long_horizon_goal`은 "사용자가 대화로 원하는 음식과 현재 조건을 입력하면, 앱은 적합한 식당·메뉴 후보를 추천한다"를 약속하는데, 구현은 뒷문장(선택한 식당의 초안 구성)만 하고 있었다. 식당 미선택 상태의 입력은 `MainActivity.onSend`가 파싱조차 없이 버려서, 첫 인사 "먹고 싶은 것을 바로 말씀하셔도 됩니다"와 화면이 모순됐다. `Recommender.Conditions`(문장 또는 state에서 조건을 읽는 값 객체)와 `Recommender.discoveries`(전 식당 순위, 식당당 1행), `ProductSurface.explore`(읽기 전용 — `step` 호출 0회라 core·ledger·evidence 무변경)를 추가하고, 카드를 누르면 `startNewOrder → say(원문장) → addLine`으로 기존 경로에 합류한다. **가드는 `currentRestaurant() == null`이라 가이드 E1–E4의 칩 경로는 이 코드에 진입하지 않는다.** `candidates()`는 기본값 파라미터만 늘어 기존 호출부가 동일하게 동작한다. 카탈로그는 손대지 않았다 — `"1만5천원 이하로 따뜻한 국물"` 한 문장이 이미 5개 식당 8개 후보에 닿는다. 테스트 8개 추가 |
+| 2026-08-04 | 제출 문서 2종이 **존재하지 않는 UI를 설명**하던 것을 정정. `INSTALL_AND_USE_GUIDE` §2와 기술노트 §2가 화면 맨 위 "지금 단계" 배너(식당 → 메뉴 → …)를 서술했는데 `ui/`에 그 문자열이 없다(8/3에 넣었다가 뺀 흔적). 기술노트가 확정 버튼을 "상단 배너"에 있다고 한 것도 실제 위치(주문서 초안 카드)로 고쳤다. 심사관이 가이드를 읽고 화면 맨 위를 보면 즉시 어긋나던 자리다 |
 | 2026-08-04 | **파서 결함 2건 수정.** ① 금액·시간 정규식이 `원`·`분` 없는 맨 숫자도 매칭하는데 `readAmounts`가 첫 free 매칭만 보고 파싱 실패 시 슬롯을 포기해, 앞에 수량이 오면(`2인분 1만5천원 이하로`) 예산이 사라졌다. 같은 문장의 다른 슬롯이 해소되면 되묻지도 않아 **제약이 조용히 증발**한다. 다음 후보를 보도록 고쳤다. ② `findGapped`가 이미 다른 해석이 가져간 글자를 간격 예산에 계산해, 범위 부사가 값 사이에 오면(`고수는 항상 빼줘`, `밥은 계속 적게`) 값을 통째로 놓쳤다 — `항상`·`계속`은 카탈로그가 authoring한 표현이라 앱이 안다고 해놓고 실패하던 셈이다. 소비된 글자는 간격에서 제외하고 free 검사도 매칭된 단어에만 적용하도록 고쳤다. 회귀 테스트 3개 추가, debug·release JVM 각 162개 통과 |
 | 2026-08-04 | 임베딩·코사인 유사도 fallback을 실측 후 기각. 실제 카탈로그로 돌린 결과 최근접 이웃의 51.1%가 다른 값이고 유사도 상위가 정반대 뜻이었다. "열린 결정" 절 참조. 기술노트 §11의 어휘 규모(값 80·리뷰 15)도 실측값(슬롯 값 143·메뉴 31·리뷰 21)으로 정정 — `catalog.json`이 `SOURCE.zip`에 동봉되므로 스크립트로 반증 가능한 숫자였다 |
 | 2026-08-04 | **V1–V4 변형을 공식 Runner에서 전부 완주** (13·14·18·26 step, 모두 `COMPLETED`). `tools/make_probe_variants.py` 신설 — 계획서 §1의 공통 불변조건을 기계 검사로 옮겨 공식 schema 검증과 함께 파일을 쓰기 전에 돌린다. 실제로 V2에서 event id를 바꾸며 `REPLAY_OF_EVENT_ID`·`OLDER_EVENT_ID` 갱신을 빠뜨린 결함을 emulator를 태우기 전에 잡았다. 결과는 "변형 실행 결과" 절 |

@@ -136,18 +136,90 @@ class Recommender(private val catalog: SyntheticCatalog) {
         return Tally(count, sum, catalog.ratingScaleMax, positive, neutral, negative)
     }
 
+    /**
+     * What the user asked for, separated from where it was read.
+     *
+     * Ranking needs three things a person can state: the traits they named, a
+     * budget, and a time limit. Until now those were always read from the draft's
+     * own state, which only exists once a restaurant has been chosen. Carrying
+     * them in a value object lets the same scorer run over a sentence typed before
+     * any restaurant exists, so there is no second ranking rule to keep in sync
+     * with this one.
+     */
+    data class Conditions(
+        val traits: Set<String>,
+        val budget: Int?,
+        val etaLimitMinutes: Int?,
+    ) {
+        /** Union of traits, and the tighter of each limit — as `DraftPricing` does. */
+        operator fun plus(other: Conditions) = Conditions(
+            traits = traits + other.traits,
+            budget = listOfNotNull(budget, other.budget).minOrNull(),
+            etaLimitMinutes = listOfNotNull(etaLimitMinutes, other.etaLimitMinutes).minOrNull(),
+        )
+
+        companion object {
+            val NONE = Conditions(emptySet(), null, null)
+
+            /** Exactly what `candidates` derived inline before this type existed. */
+            fun ofState(catalog: SyntheticCatalog, state: ProductionState): Conditions {
+                val pricing = DraftPricing(catalog)
+                return Conditions(
+                    traits = state.fields.values
+                        .filter {
+                            catalog.slotOfFieldSlotId(it.slotId)?.kind == SlotKind.USER_CONDITION
+                        }
+                        .mapNotNull { it.value }
+                        .toSet(),
+                    budget = pricing.budgetLimit(state),
+                    etaLimitMinutes = pricing.etaLimitMinutes(state),
+                )
+            }
+
+            /**
+             * The same three things, read from one typed sentence.
+             *
+             * Wider than [ofState] on purpose. A draft has already sorted what the
+             * user stated from what was stored earlier, so state only contributes
+             * its condition slots; a sentence has not, and every value in it was
+             * just said. The menu slot is the one exclusion — naming a dish is a
+             * choice, not a trait to rank dishes by.
+             */
+            fun ofUtterance(catalog: SyntheticCatalog, utterance: Utterance): Conditions =
+                Conditions(
+                    traits = utterance.values
+                        .filter { it.scopeToken != Slots.MAIN }
+                        .map { it.valueToken }
+                        .toSet(),
+                    budget = utterance.values
+                        .mapNotNull { catalog.value(it.valueToken)?.budgetLimit }
+                        .minOrNull(),
+                    etaLimitMinutes = utterance.values
+                        .mapNotNull { catalog.value(it.valueToken)?.etaLimitMinutes }
+                        .minOrNull(),
+                )
+        }
+    }
+
+    /** One ranked menu that names the restaurant it belongs to. */
+    data class Discovery(
+        val restaurant: RestaurantDefinition,
+        val candidate: Candidate,
+    )
+
     fun candidates(
         state: ProductionState,
         restaurant: RestaurantDefinition,
         limit: Int = 3,
+        conditions: Conditions = Conditions.ofState(catalog, state),
     ): List<Candidate> {
         val pricing = DraftPricing(catalog)
         val ratings = tallies(state, restaurant)
-        val budget = pricing.budgetLimit(state)
-        val etaLimit = pricing.etaLimitMinutes(state)
+        val budget = conditions.budget
+        val etaLimit = conditions.etaLimitMinutes
         val active = activeTraitTokens(state)
         val outcomeTraits = outcomeTraitTokens(state)
-        val conditionTraits = conditionTraitTokens(state)
+        val conditionTraits = conditions.traits
         val unusable = catalog.unusableValueTokens()
 
         // A recommendation anchors the order on a main menu. Side menus are added
@@ -228,19 +300,49 @@ class Recommender(private val catalog: SyntheticCatalog) {
             .take(limit)
     }
 
+    /**
+     * The same ranking across every restaurant, one row per restaurant.
+     *
+     * The declared long-horizon goal is that saying what you want in conversation
+     * produces 식당·메뉴 candidates. Before a restaurant is chosen there is no draft
+     * to read conditions from, so they come from the sentence instead — the scorer
+     * below is the one used after a restaurant exists, unchanged.
+     *
+     * One row per restaurant, because the point being demonstrated is breadth: the
+     * user did not have to pick a restaurant before being understood. A second
+     * menu from a restaurant already listed would spend a row without making that
+     * point.
+     */
+    fun discoveries(
+        state: ProductionState,
+        conditions: Conditions,
+        limit: Int = 3,
+    ): List<Discovery> = catalog.restaurants
+        .flatMap { restaurant ->
+            candidates(state, restaurant, Int.MAX_VALUE, conditions)
+                .map { candidate -> Discovery(restaurant, candidate) }
+        }
+        // The per-restaurant chain, applied across restaurants. It ends on
+        // valueToken, which SyntheticCatalog requires unique across every slot
+        // value and every restaurant's menu, so the order is total — the same
+        // every run and the same in both comparison arms.
+        .sortedWith(
+            compareBy<Discovery> { it.candidate.blockedBy != null }
+                .thenByDescending { it.candidate.score }
+                .thenByDescending { it.candidate.ratingAdjust }
+                .thenBy { it.candidate.amount }
+                .thenBy { it.candidate.estimateMinutes }
+                .thenBy { it.candidate.valueToken },
+        )
+        .distinctBy { it.restaurant.entityToken }
+        .take(limit)
+
     /** `(평균 − 중간값) × n/(n+1)`; zero with no ratings of this exact pair. */
     private fun ratingAdjustOf(rating: Tally): Double {
         val average = rating.average ?: return 0.0
         val neutral = (1 + rating.scaleMax) / 2.0
         return (average - neutral) * rating.count / (rating.count + 1.0)
     }
-
-    /** Trait tokens the user stated for this order. */
-    private fun conditionTraitTokens(state: ProductionState): Set<String> =
-        state.fields.values
-            .filter { catalog.slotOfFieldSlotId(it.slotId)?.kind == SlotKind.USER_CONDITION }
-            .mapNotNull { it.value }
-            .toSet()
 
     /** Trait tokens from preferences that are valid and permitted right now. */
     private fun activeTraitTokens(state: ProductionState): Set<String> {
