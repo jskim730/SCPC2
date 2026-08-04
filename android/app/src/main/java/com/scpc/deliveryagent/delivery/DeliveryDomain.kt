@@ -240,8 +240,19 @@ class ProductSurface(
     data class ScopeChange(
         val slot: SlotDefinition,
         val valueToken: String,
-        /** The preference being overruled, narrowest of the ones stored for the slot. */
-        val stored: StoredPreference,
+        /**
+         * The preference being overruled, narrowest of the ones stored for the
+         * slot. Null when nothing is stored and the question is being asked for
+         * the other reason: several dishes carry this option, so which of them the
+         * user meant is not something the app may decide for them.
+         */
+        val stored: StoredPreference?,
+        /**
+         * The one dish this change was addressed to, when the draft holds more
+         * than one carrying the option. It makes "이 메뉴만" an answerable choice
+         * rather than an assumption.
+         */
+        val lineId: String? = null,
     )
 
     /**

@@ -471,13 +471,25 @@ class MainActivity : Activity() {
             return
         }
 
-        // With several dishes carrying the same option, answering for one of them
-        // says nothing about the others — so it stays that line's own value.
+        // With several dishes carrying the same option, changing it on one of them
+        // is genuinely ambiguous: this dish, this order, or from now on. Quietly
+        // taking the narrowest reading meant the one place a person deliberately
+        // goes to change a value — the draft's 변경 button — was also the one place
+        // that never asked what they meant by it.
         val carrying = surface.state().draftLines.count { decl ->
             decl.slots.any { it.baseSlotId == baseSlot.slotId }
         }
         if (parsed != null && carrying > 1) {
-            act { it.setLineOption(restaurant, parsed.lineId, baseSlot, valueToken) }
+            scopeChanges = listOf(
+                ProductSurface.ScopeChange(
+                    slot = baseSlot,
+                    valueToken = valueToken,
+                    stored = surface.storedPreferencesFor(baseSlot.scopeToken).firstOrNull(),
+                    lineId = parsed.lineId,
+                ),
+            )
+            firstStored = emptyList()
+            render()
             return
         }
 
@@ -537,6 +549,24 @@ class MainActivity : Activity() {
             ?.let {
                 lastSeenActionId = it.actionId
                 reviewableActionId = it.actionId
+                // Placing an order is the one moment in this app that is not
+                // reversible, so it is said plainly and once, in the thread, with
+                // what was ordered and what it came to.
+                chat += ChatLine(
+                    "에이전트:",
+                    buildString {
+                        append("주문이 기록되었습니다.\n")
+                        append(currentRestaurant()?.name ?: "")
+                        surface.lines().mapNotNull { line -> line.menuValueToken }
+                            .takeIf { tokens -> tokens.isNotEmpty() }
+                            ?.let { tokens ->
+                                append(" · ")
+                                append(tokens.joinToString { token -> catalog.valueLabel(token) })
+                            }
+                        append("\n합계 ${pricing.formatAmount(pricing.total(state))}")
+                        append("\n합성 주문입니다 — 실제 결제·배달은 일어나지 않습니다.")
+                    },
+                )
             }
 
         appBarHost.removeAllViews()
@@ -604,8 +634,9 @@ class MainActivity : Activity() {
         content.addView(
             Ui.agentCard(
                 context = this,
-                question = "식당 고르기",
-                hint = "6곳 모두 합성 실험 매장입니다. 실제 주문·결제는 일어나지 않습니다.",
+                question = "식당부터 고르기",
+                hint = "먼저 드시고 싶은 것을 말씀하시면 식당과 메뉴를 함께 골라 드립니다. " +
+                    "6곳 모두 합성 실험 매장이고 실제 주문·결제는 일어나지 않습니다.",
                 chips = catalog.restaurants.map { restaurant ->
                     Ui.Chip(label = restaurant.name) {
                         clearTransientScreenState()
@@ -643,16 +674,24 @@ class MainActivity : Activity() {
         val change = scopeChanges.firstOrNull()
         if (change != null) {
             val levels = surface.scopeChoicesFor(restaurant, change.slot)
+            val thisDish = change.lineId?.let { lineId ->
+                listOf(
+                    Ui.Chip(label = "이 메뉴만 · 이번 주문") { applyLineOnlyChange(change, lineId) },
+                )
+            }.orEmpty()
             content.addView(
                 Ui.agentCard(
                     context = this,
                     question = "${Particles.withObj(change.slot.label)} " +
                         "${catalog.valueLabel(change.valueToken)}(으)로 바꿀게요. 어디까지 바꿀까요?",
-                    hint = "지금 기억하고 있는 값은 " +
-                        "${catalog.valueLabel(change.stored.value)}입니다 " +
-                        "(${storedScopeLabel(change.stored)}).",
-                    chips = listOf(
-                        Ui.Chip(label = "이번 주문만") { applyScopeChange(change, null) },
+                    hint = change.stored?.let {
+                        "지금 기억하고 있는 값은 ${catalog.valueLabel(it.value)}입니다 " +
+                            "(${storedScopeLabel(it)})."
+                    } ?: "지금 주문에 이 옵션을 가진 메뉴가 둘 이상입니다.",
+                    chips = thisDish + listOf(
+                        Ui.Chip(label = if (thisDish.isEmpty()) "이번 주문만" else "이번 주문 전체") {
+                            applyScopeChange(change, null)
+                        },
                     ) + levels.map { level ->
                         Ui.Chip(label = changeLevelLabel(level)) { applyScopeChange(change, level) }
                     },
@@ -751,19 +790,39 @@ class MainActivity : Activity() {
     ) {
         val restaurant = currentRestaurant() ?: return
         scopeChanges = scopeChanges - change
-        chat += ChatLine("나:", level?.let(::changeLevelLabel) ?: "이번 주문만")
+        val wholeOrder = change.lineId != null
+        chat += ChatLine(
+            "나:",
+            level?.let(::changeLevelLabel) ?: if (wholeOrder) "이번 주문 전체" else "이번 주문만",
+        )
         chat += ChatLine(
             "에이전트:",
             "${Particles.withObj(change.slot.label)} " +
                 "${Particles.withInto(catalog.valueLabel(change.valueToken))} " +
                 if (level == null) {
-                    "이번 주문에만 적용합니다. 기억한 " +
-                        "${catalog.valueLabel(change.stored.value)}은(는) 그대로 둡니다."
+                    val kept = change.stored?.let {
+                        " 기억한 ${catalog.valueLabel(it.value)}은(는) 그대로 둡니다."
+                    }.orEmpty()
+                    "이번 주문에만 적용합니다.$kept"
                 } else {
                     "${changeLevelLabel(level)} 범위로 바꿨습니다."
                 },
         )
         act { it.rememberAtLevel(restaurant, change.slot, change.valueToken, level) }
+    }
+
+    /** Applies the change to the one dish it was addressed to, and nothing else. */
+    private fun applyLineOnlyChange(change: ProductSurface.ScopeChange, lineId: String) {
+        val restaurant = currentRestaurant() ?: return
+        scopeChanges = scopeChanges - change
+        chat += ChatLine("나:", "이 메뉴만 · 이번 주문")
+        chat += ChatLine(
+            "에이전트:",
+            "이 메뉴의 ${Particles.withObj(change.slot.label)} " +
+                "${Particles.withInto(catalog.valueLabel(change.valueToken))} 바꿨습니다. " +
+                "다른 메뉴와 저장된 기억은 그대로입니다.",
+        )
+        act { it.setLineOption(restaurant, lineId, change.slot, change.valueToken) }
     }
 
     /** The same three scopes, named as the change they make. */
@@ -854,8 +913,18 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * This restaurant's menu, ordered by what the user said.
+     *
+     * It is a list to choose from, not a recommendation, and it stopped claiming
+     * to be one: once the restaurant is settled its dishes are all of a kind, and
+     * calling six near-identical options a recommendation only made the word
+     * mean less. Recommending is what happens before a restaurant exists, where
+     * the app answers a sentence with 식당·메뉴 pairs across every restaurant.
+     */
     private fun renderCandidates() {
         val restaurant = currentRestaurant() ?: return
+        if (reviewableActionId != null) return
         val shown = candidates.ifEmpty {
             if (surface.lines().isEmpty()) {
                 Recommender(catalog).candidates(surface.state(), restaurant)
@@ -866,8 +935,8 @@ class MainActivity : Activity() {
         if (shown.isEmpty()) return
         val card = Ui.agentCard(
             context = this,
-            question = "이런 메뉴는 어떠세요?",
-            hint = "조건과 저장된 취향에 맞춘 순서입니다.",
+            question = "${restaurant.name} 메뉴",
+            hint = "말씀하신 조건과 저장된 취향에 맞춘 순서입니다. 담을 것을 고르세요.",
             chips = emptyList(),
         )
         shown.forEach { candidate ->
@@ -910,10 +979,13 @@ class MainActivity : Activity() {
             Ui.orderBar(
                 context = this,
                 count = lines.size,
-                summary = if (openQuestions.isEmpty()) {
-                    "주문서 ${pricing.formatAmount(total)} · 확인 완료"
-                } else {
-                    "주문서 ${pricing.formatAmount(total)} · 확인 ${openQuestions.size}건 남음"
+                summary = when {
+                    // A recorded order is not a draft any more. Leaving the bar
+                    // saying 주문서 left the finished order looking like one still
+                    // being filled in.
+                    reviewableActionId != null -> "주문 완료 · ${pricing.formatAmount(total)}"
+                    openQuestions.isEmpty() -> "주문서 ${pricing.formatAmount(total)} · 확인 완료"
+                    else -> "주문서 ${pricing.formatAmount(total)} · 확인 ${openQuestions.size}건 남음"
                 },
                 onOpen = { openPanel(Panel.DRAFT) },
             ),
@@ -1161,6 +1233,7 @@ class MainActivity : Activity() {
      */
     private fun draftPanel(state: ProductionState): View {
         val restaurant = currentRestaurant()
+        val recorded = reviewableActionId != null
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
@@ -1178,7 +1251,9 @@ class MainActivity : Activity() {
             } else {
                 ""
             }
-            val choices = editChoices(field, restaurant)
+            // A recorded order is a receipt, not a form. Offering 변경 on it would
+            // let the user edit something that has already happened.
+            val choices = if (recorded) emptyList() else editChoices(field, restaurant)
             val open = editingFieldId == field.fieldId
             body.addView(
                 Ui.draftRow(
@@ -1242,7 +1317,7 @@ class MainActivity : Activity() {
             addRow(field, catalog.slotLabel(field.slotId))
         }
 
-        if (restaurant != null && surface.lines().isNotEmpty()) {
+        if (restaurant != null && !recorded && surface.lines().isNotEmpty()) {
             val sides = catalog.sideMenus(restaurant).filter { it.inStock }
             if (sides.isNotEmpty()) {
                 body.addView(Ui.menuGroup(this, "사이드 추가").apply { setPadding(0, Ui.dp(this@MainActivity, 12), 0, Ui.dp(this@MainActivity, 4)) })
@@ -1299,21 +1374,36 @@ class MainActivity : Activity() {
         val footer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(
-                Ui.primaryAction(
-                    context = this@MainActivity,
-                    text = if (openQuestions.isEmpty()) {
-                        "이대로 주문하기 · ${pricing.formatAmount(total)}"
-                    } else {
-                        "확인 ${openQuestions.size}건을 마치면 주문할 수 있습니다"
-                    },
-                    enabled = openQuestions.isEmpty() && restaurant != null,
-                ) {
-                    closePanel()
-                    restaurant?.let { r -> act { it.requestDecision(r) } }
+                if (recorded) {
+                    // The order is placed. The only thing left to do here is leave,
+                    // and a second 주문하기 button would invite a duplicate.
+                    Ui.primaryAction(
+                        context = this@MainActivity,
+                        text = "닫기",
+                        enabled = true,
+                    ) { closePanel() }
+                } else {
+                    Ui.primaryAction(
+                        context = this@MainActivity,
+                        text = if (openQuestions.isEmpty()) {
+                            "이대로 주문하기 · ${pricing.formatAmount(total)}"
+                        } else {
+                            "확인 ${openQuestions.size}건을 마치면 주문할 수 있습니다"
+                        },
+                        enabled = openQuestions.isEmpty() && restaurant != null,
+                    ) {
+                        closePanel()
+                        restaurant?.let { r -> act { it.requestDecision(r) } }
+                    }
                 },
             )
         }
-        return Ui.sheet(this, "주문서", body, footer) { closePanel() }
+        return Ui.sheet(
+            this,
+            if (recorded) "완료된 주문" else "주문서",
+            body,
+            footer,
+        ) { closePanel() }
     }
 
     /** Everything that is not the conversation, gathered behind one control. */
