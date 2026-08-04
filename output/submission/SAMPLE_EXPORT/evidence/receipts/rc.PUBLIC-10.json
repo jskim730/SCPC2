@@ -1,0 +1,41 @@
+{
+  "receipt_id": "rc.PUBLIC-10",
+  "step_ids": [
+    "PUBLIC-10"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "decision_id": null,
+  "requested_at": "2026-01-01T00:09:00Z",
+  "final_state_at": "2026-01-01T00:09:00Z",
+  "decision_state": "CONFIRMED_COMPLETE",
+  "action_commit_state": "COMMITTED",
+  "attempts": [
+    {
+      "attempt_id": "att.PUBLIC-10.local",
+      "execution_kind": "LOCAL_DETERMINISTIC",
+      "started_at": "2026-01-01T00:09:00Z",
+      "ended_at": "2026-01-01T00:09:00Z",
+      "status": "SUCCESS",
+      "retry": false
+    }
+  ],
+  "decision_invocations": 0,
+  "cumulative_invocations": 0,
+  "quota_limit": 60,
+  "quota_exceeded": false,
+  "process_epoch": 1,
+  "namespace": "full",
+  "aspr_enabled": true,
+  "state_before_sha256": "fba651e8eccfe63dd471e129ed4b25e208c49ed58ab252a6ba8e5a064ff13565",
+  "state_after_sha256": "95a85ff7088573b63985b6747f6a92b35afd9202fe454edaaf03a6ade01b6246",
+  "action": {
+    "actionId": "action.EVENT-PUBLIC-DECISION-01",
+    "idempotencyKey": "idem.6a836629445f55c60150b2c3",
+    "commitState": "COMMITTED",
+    "outcomeId": "outcome.commit.EVENT-PUBLIC-DECISION-01",
+    "originEventId": "EVENT-PUBLIC-DECISION-01",
+    "draftDigest": "6a836629445f55c60150b2c34df37b63d9fa2e1e02eaa77c760b2f4e668dabd8",
+    "seq": 6
+  },
+  "duplicate_commits_prevented": 1
+}

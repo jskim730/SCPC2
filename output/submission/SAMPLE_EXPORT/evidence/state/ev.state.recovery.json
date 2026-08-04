@@ -1,0 +1,15 @@
+{
+  "process_epoch": 1,
+  "kill_checkpoint_seq": 16,
+  "kill_checkpoint_digest": "ae2d8735e170eb8397e8ba31404b5098d1e07d6169ac8d3621dac8c70bb3f6d4",
+  "preserved_field_ids": [],
+  "reconfirm_field_ids": [
+    "field.PUBLIC_ENTITY_A.outcome"
+  ],
+  "evidence_id": "ev.state.recovery",
+  "step_ids": [
+    "PUBLIC-13"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "namespace": "full"
+}

@@ -1,0 +1,33 @@
+{
+  "receipt_id": "rc.PUBLIC-01",
+  "step_ids": [
+    "PUBLIC-01"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "decision_id": null,
+  "requested_at": "2026-01-01T00:00:00Z",
+  "final_state_at": "2026-01-01T00:00:00Z",
+  "decision_state": "NO_DECISION",
+  "action_commit_state": "NONE",
+  "attempts": [
+    {
+      "attempt_id": "att.PUBLIC-01.local",
+      "execution_kind": "LOCAL_DETERMINISTIC",
+      "started_at": "2026-01-01T00:00:00Z",
+      "ended_at": "2026-01-01T00:00:00Z",
+      "status": "SUCCESS",
+      "retry": false
+    }
+  ],
+  "decision_invocations": 0,
+  "cumulative_invocations": 0,
+  "quota_limit": 60,
+  "quota_exceeded": false,
+  "process_epoch": 0,
+  "namespace": "full",
+  "aspr_enabled": true,
+  "state_before_sha256": "a60caaea5632d125f737c77250f89c3d9a3a6a298b3ad8600bc1adccb8270c29",
+  "state_after_sha256": "ddc375ff0f47dc12563b41e4d26fe466a4d7cd022f943d53413b89ff435a6a2a",
+  "action": null,
+  "duplicate_commits_prevented": 0
+}

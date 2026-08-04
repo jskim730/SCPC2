@@ -1,0 +1,60 @@
+{
+  "facts": [
+    {
+      "factId": "fact.OUTCOME.slot.PUBLIC_ENTITY_A.outcome",
+      "kind": "OUTCOME",
+      "slotId": "slot.PUBLIC_ENTITY_A.outcome",
+      "value": "PUBLIC_DELAYED_OUTCOME_ARRIVED",
+      "source": "DELAYED_OUTCOME",
+      "originReviewId": null,
+      "confidence": "EXPLICIT",
+      "permission": "ASK_BEFORE_APPLY",
+      "lifetime": "STABLE",
+      "scopeIds": [],
+      "authorityVersion": 3,
+      "entityId": null,
+      "catalogEntityId": null,
+      "goalId": null,
+      "boundSessionId": "SESSION-C#3",
+      "createdAtVirtual": "2026-01-08T00:10:00Z",
+      "expiresAtVirtual": null,
+      "seq": 22,
+      "baseSlotId": null,
+      "specificity": 0,
+      "menuTypeId": null,
+      "scopeMenuId": null
+    },
+    {
+      "factId": "fact.STABLE.slot.PUBLIC_SCOPE_KEEP",
+      "kind": "STABLE",
+      "slotId": "slot.PUBLIC_SCOPE_KEEP",
+      "value": "PUBLIC_CORRECTED_GREEN",
+      "source": "USER_CORRECTION",
+      "originReviewId": null,
+      "confidence": "EXPLICIT",
+      "permission": "AUTO_APPLY",
+      "lifetime": "STABLE",
+      "scopeIds": [
+        "scope.PUBLIC_SCOPE_KEEP"
+      ],
+      "authorityVersion": 2,
+      "entityId": null,
+      "catalogEntityId": "PUBLIC_ENTITY_A",
+      "goalId": null,
+      "boundSessionId": "SESSION-A#1",
+      "createdAtVirtual": "2026-01-01T00:01:00Z",
+      "expiresAtVirtual": null,
+      "seq": 9,
+      "baseSlotId": null,
+      "specificity": 0,
+      "menuTypeId": null,
+      "scopeMenuId": null
+    }
+  ],
+  "evidence_id": "ev.state.facts",
+  "step_ids": [
+    "PUBLIC-13"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "namespace": "full"
+}

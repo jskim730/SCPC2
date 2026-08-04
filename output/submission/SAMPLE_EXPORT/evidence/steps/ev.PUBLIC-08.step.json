@@ -1,0 +1,73 @@
+{
+  "evidence_id": "ev.PUBLIC-08.step",
+  "step_ids": [
+    "PUBLIC-08"
+  ],
+  "operation": "SET_NETWORK",
+  "event_id": "EVENT-PUBLIC-NETWORK-01",
+  "session_id": "SESSION-B#2",
+  "session_label": "SESSION-B",
+  "virtual_time": "2026-01-01T00:07:00Z",
+  "network_state": "OFFLINE",
+  "decision_state": "WAIT",
+  "aspr_enabled": true,
+  "namespace": "full",
+  "roles_seen": {
+    "NETWORK_STATE": "OFFLINE",
+    "ONE_OFF_VALUE": "OFFLINE"
+  },
+  "open_confirmation_ids": [],
+  "selected_context_ids": [
+    "fact.STABLE.slot.PUBLIC_SCOPE_KEEP"
+  ],
+  "excluded_context": {},
+  "draft": [
+    {
+      "fieldId": "field.PUBLIC_SCOPE_KEEP",
+      "slotId": "slot.PUBLIC_SCOPE_KEEP",
+      "value": "PUBLIC_CORRECTED_GREEN",
+      "status": "AUTO_APPLIED",
+      "priced": true,
+      "deps": [
+        {
+          "kind": "HARD_VALUE",
+          "ref": "fact.STABLE.slot.PUBLIC_SCOPE_KEEP"
+        },
+        {
+          "kind": "PERMISSION",
+          "ref": "scope.PUBLIC_SCOPE_KEEP"
+        },
+        {
+          "kind": "CATALOG",
+          "ref": "catalog.PUBLIC_ENTITY_A.slot.PUBLIC_SCOPE_KEEP.v2"
+        }
+      ],
+      "provenance": "EXPLICIT_STABLE_AUTO_APPLIED",
+      "factId": "fact.STABLE.slot.PUBLIC_SCOPE_KEEP",
+      "updatedSeq": 9,
+      "userConfirmed": false
+    },
+    {
+      "fieldId": "field.total",
+      "slotId": "slot.total",
+      "value": "total.b7f1fed1c487ed64",
+      "status": "NEEDS_CONFIRMATION",
+      "priced": false,
+      "deps": [
+        {
+          "kind": "TOTAL",
+          "ref": "field.PUBLIC_SCOPE_KEEP"
+        }
+      ],
+      "provenance": "PRICED_LINE_ROLLUP",
+      "factId": null,
+      "updatedSeq": 9,
+      "userConfirmed": false
+    }
+  ],
+  "valid_interaction_load": 1,
+  "notes": {
+    "network_state": "OFFLINE",
+    "catalog_cached_for_target": true
+  }
+}

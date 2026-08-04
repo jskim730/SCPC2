@@ -1,0 +1,21 @@
+{
+  "tombstones": [
+    {
+      "tombstoneId": "tomb.slot.PUBLIC_SCOPE_KEEP",
+      "slotId": "slot.PUBLIC_SCOPE_KEEP",
+      "scopeIds": [
+        "scope.PUBLIC_SCOPE_KEEP"
+      ],
+      "authorityVersion": 1,
+      "deletedAtVirtual": "2026-01-01T00:06:00Z",
+      "kind": "ONE_OFF",
+      "seq": 14
+    }
+  ],
+  "evidence_id": "ev.state.deletion",
+  "step_ids": [
+    "PUBLIC-13"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "namespace": "full"
+}
