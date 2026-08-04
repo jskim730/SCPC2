@@ -581,7 +581,6 @@ class MainActivity : Activity() {
         renderDiscoveries()
         renderRestaurantChoice()
         renderCandidates()
-        renderFirstStored()
         renderNextQuestion(state)
         renderReview(state)
         renderNextOrder()
@@ -701,6 +700,48 @@ class MainActivity : Activity() {
             return
         }
 
+        // What was just learned, settled before the next thing is asked.
+        //
+        // This used to sit beside the next question, so answering one option put
+        // two cards on screen at once — one of them a notice the user was meant to
+        // ignore. The card slot holds exactly one thing to attend to, and the run
+        // reads the way it happens: 값을 고르고, 얼마나 쓸지 정하고, 다음 항목.
+        val stored = firstStored.firstOrNull()
+        if (stored != null) {
+            content.addView(
+                Ui.agentCard(
+                    context = this,
+                    question = "${Particles.withObj(stored.slot.label)} " +
+                        "${catalog.valueLabel(stored.valueToken)}(으)로 기억했습니다.",
+                    hint = "다음 주문부터 이 항목은 묻지 않고 이 값으로 채웁니다.",
+                    chips = listOf(
+                        Ui.Chip(label = "좋아요") {
+                            firstStored = firstStored - stored
+                            render()
+                        },
+                        Ui.Chip(label = "이번 주문만 할래요") {
+                            firstStored = firstStored - stored
+                            chat += ChatLine("나:", "${stored.slot.label}은 이번 주문만")
+                            chat += ChatLine(
+                                "에이전트:",
+                                "${Particles.withObj(stored.slot.label)} 기억에서 지우고 " +
+                                    "이번 주문에만 적용합니다.",
+                            )
+                            act {
+                                it.narrowToThisOrder(restaurant, stored.slot, stored.valueToken)
+                            }
+                        },
+                    ),
+                    footnote = if (firstStored.size > 1) {
+                        "이어서 정할 것 ${firstStored.size - 1}개가 더 있습니다."
+                    } else {
+                        "'내 취향과 기억'에서 언제든 고치거나 지울 수 있습니다."
+                    },
+                ),
+            )
+            return
+        }
+
         val total = openQuestions.size
         if (total == 0) return
         val fieldId = openQuestions.first()
@@ -741,47 +782,6 @@ class MainActivity : Activity() {
     /** The option's own name; the line it belongs to is already in the draft. */
     private fun questionLabel(field: DraftField): String =
         catalog.baseSlotOfLineSlotId(field.slotId)?.label ?: catalog.slotLabel(field.slotId)
-
-    /**
-     * What was just remembered, and the one tap that takes it back.
-     *
-     * Storing on first use is only honest if the user can see it happen and undo
-     * it without hunting for a settings screen, so the card sits in the thread at
-     * the moment it applies rather than being reported somewhere else later.
-     */
-    private fun renderFirstStored() {
-        val restaurant = currentRestaurant() ?: return
-        if (firstStored.isEmpty()) return
-        firstStored.forEach { stored ->
-            content.addView(
-                Ui.agentCard(
-                    context = this,
-                    question = "${Particles.withObj(stored.slot.label)} " +
-                        "${catalog.valueLabel(stored.valueToken)}(으)로 기억했습니다.",
-                    hint = "다음 주문부터 이 항목은 묻지 않고 이 값으로 채웁니다.",
-                    chips = listOf(
-                        Ui.Chip(label = "이번 주문만 할래요") {
-                            firstStored = firstStored - stored
-                            chat += ChatLine("나:", "${stored.slot.label}은 이번 주문만")
-                            chat += ChatLine(
-                                "에이전트:",
-                                "${Particles.withObj(stored.slot.label)} 기억에서 지우고 " +
-                                    "이번 주문에만 적용합니다.",
-                            )
-                            act {
-                                it.narrowToThisOrder(restaurant, stored.slot, stored.valueToken)
-                            }
-                        },
-                        Ui.Chip(label = "좋아요") {
-                            firstStored = firstStored - stored
-                            render()
-                        },
-                    ),
-                    footnote = "'내 취향과 기억'에서 언제든 고치거나 지울 수 있습니다.",
-                ),
-            )
-        }
-    }
 
     /** Writes a change to a remembered value at the scope the user named. */
     private fun applyScopeChange(
