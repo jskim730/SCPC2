@@ -90,6 +90,9 @@ class MainActivity : Activity() {
     /** The user asked for the restaurant list from the menu, mid-conversation. */
     private var offeringNextOrder = false
 
+    /** A new order has been opened and is waiting for what the user wants. */
+    private var startingNewOrder = false
+
     /** Which arm's thread is currently in memory, and what was last written. */
     private var loadedArm = Arm.FULL
     private var persistedSignature = ""
@@ -120,9 +123,36 @@ class MainActivity : Activity() {
     private val pricing: DraftPricing get() = DraftPricing(catalog)
     private val surface: ProductSurface get() = Production.surface(this)
 
-    /** The restaurant the order is currently against. */
+    /**
+     * The restaurant this conversation is ordering from.
+     *
+     * Null while a new order is being opened, even though the core still holds the
+     * finished one's target: nothing has been decided yet, and the screen is back
+     * at the point where the user says what they want and the app answers with
+     * 식당·메뉴. Every part of the screen already keys off this, so the whole run
+     * returns to its opening state from here.
+     */
     private fun currentRestaurant(): RestaurantDefinition? =
-        catalog.restaurant(surface.state().targetEntityId)
+        if (startingNewOrder) null else catalog.restaurant(surface.state().targetEntityId)
+
+    /**
+     * Opens an order at [restaurant] with the operation the run is actually at.
+     *
+     * The first order of a run resets and starts; a later one advances the session,
+     * which is what expires the previous order's one-off conditions while leaving
+     * stored preferences, permissions and reviews standing.
+     */
+    private fun beginOrder(
+        surface: ProductSurface,
+        restaurant: RestaurantDefinition,
+    ): StepOutcome {
+        val state = surface.state()
+        return if (state.actions.isEmpty() && state.targetEntityId == null) {
+            surface.startNewOrder(restaurant)
+        } else {
+            surface.nextOrderSession(restaurant)
+        }
+    }
 
     /**
      * Screen-kept working state belongs to one order conversation. A new
@@ -139,6 +169,7 @@ class MainActivity : Activity() {
         scopeChanges = emptyList()
         reviewableActionId = null
         offeringNextOrder = false
+        startingNewOrder = false
         editingFieldId = null
         reviewRating = null
         reviewOffers = emptyList()
@@ -222,7 +253,7 @@ class MainActivity : Activity() {
      * happens far more often than a new message does.
      */
     private fun persistConversation() {
-        val signature = "${chat.size}:$reviewableActionId:$lastSeenActionId"
+        val signature = "${chat.size}:$reviewableActionId:$lastSeenActionId:$startingNewOrder"
         if (signature == persistedSignature) return
         persistedSignature = signature
         val lines = JSONArray()
@@ -234,6 +265,9 @@ class MainActivity : Activity() {
                 .put("lines", lines)
                 .put("reviewableActionId", reviewableActionId ?: JSONObject.NULL)
                 .put("lastSeenActionId", lastSeenActionId ?: JSONObject.NULL)
+                // Kept so a relaunch in the middle of choosing a new order does not
+                // drop the user back into the finished one.
+                .put("startingNewOrder", startingNewOrder)
                 .toString(),
         )
     }
@@ -249,6 +283,7 @@ class MainActivity : Activity() {
         chat.clear()
         reviewableActionId = null
         lastSeenActionId = null
+        startingNewOrder = false
         persistedSignature = ""
         val encoded = ConversationStore(this, loadedArm).load() ?: return
         try {
@@ -262,9 +297,11 @@ class MainActivity : Activity() {
             // Restored too, so a relaunch does not mistake the last recorded order
             // for a new one and reopen a rating card the user already moved past.
             lastSeenActionId = root.optNullableString("lastSeenActionId")
+            startingNewOrder = root.optBoolean("startingNewOrder", false)
             // What is on disk is what was just read, so the next redraw has nothing
             // to write back.
-            persistedSignature = "${chat.size}:$reviewableActionId:$lastSeenActionId"
+            persistedSignature =
+                "${chat.size}:$reviewableActionId:$lastSeenActionId:$startingNewOrder"
         } catch (error: Exception) {
             chat.clear()
             persistedSignature = ""
@@ -626,7 +663,13 @@ class MainActivity : Activity() {
             Ui.chatLine(
                 this,
                 "에이전트:",
-                "안녕하세요. 어디서 주문할까요?\n" +
+                (
+                    if (startingNewOrder) {
+                        "새 주문을 시작할게요. 오늘은 뭘 드시고 싶으세요?\n"
+                    } else {
+                        "안녕하세요. 어디서 주문할까요?\n"
+                    }
+                    ) +
                     "먹고 싶은 것을 바로 말씀하셔도 됩니다 — " +
                     "'매운 음식', '마라', '1만5천원 이하로 따뜻한 국물'처럼요.",
             ),
@@ -641,7 +684,7 @@ class MainActivity : Activity() {
                     Ui.Chip(label = restaurant.name) {
                         clearTransientScreenState()
                         chat += ChatLine("에이전트:", "${restaurant.name}으로 새 주문을 시작했습니다.")
-                        act { it.startNewOrder(restaurant) }
+                        act { beginOrder(it, restaurant) }
                     }
                 },
             ),
@@ -906,9 +949,12 @@ class MainActivity : Activity() {
         discoveries = emptyList()
         exploreConditions = Recommender.Conditions.NONE
         exploreSentences.clear()
+        // The order exists from here, so the screen stops standing in for the
+        // opening state and shows the draft this pick just started.
+        startingNewOrder = false
         chat += ChatLine("나:", "${restaurant.name} · ${discovery.candidate.label}")
         actQuiet { surface ->
-            surface.startNewOrder(restaurant)
+            beginOrder(surface, restaurant)
             sentences.forEach { sentence -> applySentence(restaurant, sentence) }
             surface.addLine(restaurant, discovery.candidate.valueToken)
         }
@@ -1196,20 +1242,23 @@ class MainActivity : Activity() {
             Ui.agentCard(
                 context = this,
                 question = "다음 주문을 시작할까요?",
-                hint = "새 session이 열립니다. 이번 주문에만 적용한 값은 따라오지 않고, 저장한 취향은 그대로 쓰입니다.",
-                chips = catalog.restaurants.map { restaurant ->
-                    Ui.Chip(label = restaurant.name) {
+                hint = "새 대화가 열립니다. 드시고 싶은 것을 말씀하시면 식당과 메뉴를 함께 골라 드립니다. " +
+                    "이번 주문에만 적용한 값은 따라오지 않고, 저장한 취향은 그대로 쓰입니다.",
+                chips = listOf(
+                    Ui.Chip(label = "새로 주문하기") {
+                        // A new order is a new conversation, and it starts where the
+                        // first one did — with the user saying what they want, not
+                        // with a list of restaurants. Picking the restaurant first
+                        // was the very thing the discovery path exists to undo, and
+                        // it was still the only way in to every order after the
+                        // first. Nothing reaches the core until a dish is picked, so
+                        // the finished order stands until it is genuinely replaced.
                         clearTransientScreenState()
-                        // A new order is a new conversation. What was said about the
-                        // last meal has been answered for — it produced whatever the
-                        // user chose to keep, and that lives in 내 취향과 기억 and in
-                        // each draft row's provenance. Carrying its words forward
-                        // only buried the new conversation under the old one.
                         chat.clear()
-                        chat += ChatLine("나:", "${restaurant.name}에서 새로 주문할게")
-                        act { it.nextOrderSession(restaurant) }
-                    }
-                } + if (finished) {
+                        startingNewOrder = true
+                        render()
+                    },
+                ) + if (finished) {
                     emptyList()
                 } else {
                     // Asked for from the menu in the middle of an order, so it has
