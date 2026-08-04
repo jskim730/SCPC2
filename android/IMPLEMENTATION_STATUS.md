@@ -423,10 +423,30 @@ adb shell am instrument -w -e class com.scpc.deliveryagent.probe.ProbeParityTest
    각각 13-step을 완주했고 둘 다 `run_status: COMPLETED`였다. 즉 남은 것은 "서명된 APK로 한 번 더"
    뿐이고, 하네스·어댑터·evidence 경로에서 새로 드러날 문제는 없다. **Windows에서는 `tools/`의 shim
    두 개를 거쳐야 한다** — 런북 1-2 참조.
-8. V1–V4 변형 입력으로 반복 (`PROBE_METAMORPHIC_TEST_PLAN.md`)
+8. ~~V1–V4 변형 입력으로 반복~~ **완료 (2026-08-04, debug APK).** 변형 생성기
+   `tools/make_probe_variants.py`가 `test-fixtures/probe/`에 4종을 쓰고, 넷 다 공식 Runner에서
+   `run_status: COMPLETED`. 결과는 아래 "변형 실행 결과" 절. release APK로 1회 반복한다
 9. `FINALIZE_SAMPLE_EXPORT.py` → `VALIDATE_SAMPLE_EXPORT.py`
 10. `DEMO_VIDEO.mp4` 3분 이내
 11. **최종 APK를 정한 뒤에는 다시 build/sign 하지 않는다.**
+
+## 변형 실행 결과 (2026-08-04, debug APK · emulator)
+
+`tools/make_probe_variants.py`가 공개 입력에서 4종을 만들고, 공식 harness에 `--public-input`으로 넘겨
+digest·assignment는 공식 도구가 계산하게 했다. 넷 다 `run_status: COMPLETED`다.
+
+| 변형 | step | evidence | 확인된 성질 |
+|---|---:|---:|---|
+| V1 role token 전면치환 | 13 | 35 | **결정 13개가 기준 실행과 완전 일치.** 토큰 철자가 아니라 관계로 판단한다 |
+| V2 entity·goal 교환 | 14 | 37 | 삽입한 distractor step을 빼면 기준과 완전 일치. **target보다 최근인 authority(V9)를 가진 distractor fact가 어떤 판단도 바꾸지 못했다** |
+| V3 순서변형·중간 Reset | 18 | 19 | offline→`WAIT`, 복구→`ACT`. 반복 판단 2건이 **같은 `idempotency_key`와 같은 `action_id`** 반환 — `ACT` 6건에 서로 다른 action은 3건 |
+| V4 26-step 장기 | 26 | 61 | delayed outcome 도착 뒤 `ACT`→`ASK` 전환, kill 뒤 완료 미주장, replay가 추가 commit 없음, 낮은 authority out-of-order → `ABSTAIN`, delete 뒤 tombstone 1건 |
+
+V1·V2가 특히 값이 크다. §12가 "official은 공개 연습과 다른 값·표현·순서·surface를 쓴다"고 예고한 바로 그
+상황인데, 공개 문자열을 지우고 entity 관계를 뒤집어도 판단이 동일했다. V2는 "가장 최근 fact를 쓴다"·"먼저
+나온 entity를 target으로 삼는다"는 지름길이 있었다면 틀린 답을 냈을 입력이다.
+
+점수·합불은 적지 않는다. 공개 리허설은 §12상 비공식 준비도 점검이고 이 입력들에는 oracle이 없다.
 
 ## 열린 결정
 
@@ -609,6 +629,7 @@ Wellbeing과 System UI가 연달아 ANR을 냈으며 그 대화상자가 포커�
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
 | 2026-08-03 | 에뮬레이터에서 첫 식당 선택 뒤 추천 카드가 나오지 않던 결함 수정. `RESET_AND_START`가 이전 run을 비운 뒤 새 step의 목표·대상 context를 적용하도록 순서를 고치고, `startNewOrder`가 `TARGET_ENTITY`를 명시한다. reset 직후 context와 채팅 입력 전 추천 후보를 고정하는 회귀 테스트 2개 추가. debug·release JVM 각 152개 및 `assembleDebug` 통과 |
 | 2026-08-04 | **메뉴 이름을 타이핑하면 주문 항목이 담기지 않던 결함 수정.** `option.main`의 kind가 `menu_option`이라, 재사용 범위를 말하지 않은 문장(`마라탕으로 할게`)에서 파서가 메뉴에도 "이번 주문만 적용할까요, 기억할까요?" 질문을 붙였고 `say`가 그 값을 미해결로 보고 버려 `addLine` 분기에 도달하지 못했다. 메뉴 slot을 범위 질문 대상에서 제외(`NaturalLanguage.read`). `INSTALL_AND_USE_GUIDE` §3이 심사관에게 그대로 입력하라고 지시하는 E4 문장 2개가 이 경로였고, 기존 대본 테스트는 그 자리에서 `addLine(token)`을 직접 불러 파서를 우회했기 때문에 잡히지 않았다. 타이핑만으로 검증하는 `GuideScriptSentencesTest` 신설. debug·release JVM 각 154개 통과 |
+| 2026-08-04 | **V1–V4 변형을 공식 Runner에서 전부 완주** (13·14·18·26 step, 모두 `COMPLETED`). `tools/make_probe_variants.py` 신설 — 계획서 §1의 공통 불변조건을 기계 검사로 옮겨 공식 schema 검증과 함께 파일을 쓰기 전에 돌린다. 실제로 V2에서 event id를 바꾸며 `REPLAY_OF_EVENT_ID`·`OLDER_EVENT_ID` 갱신을 빠뜨린 결함을 emulator를 태우기 전에 잡았다. 결과는 "변형 실행 결과" 절 |
 | 2026-08-04 | **공식 Runner 13-step을 debug APK로 완주.** 샘플 APK(Phase 1)·우리 APK(Phase 2) 모두 `run_status: COMPLETED`·`step_count: 13`. 우리 결과는 evidence 35건(샘플 26건)이고 결정 상태에 **`WAIT`와 `ABSTAIN`이 실제로 나타났다** — 샘플은 `ACT`·`CONFIRMED_COMPLETE`만 낸다. 공개 입력의 `SET_NETWORK OFFLINE` 주입에 설계대로 멈춘 것이 공식 파이프라인을 통과해 관측됐다. `model_backend_frozen_id: NOT_USED`·`cumulative_invocations: 0`도 공식 결과물에 기록됐다. 남은 것은 서명된 APK로 1회 반복 |
 | 2026-08-04 | **공식 Kit의 Windows 비호환 2건 발견·우회.** ① `apk_release_info.py`가 SDK 도구를 확장자 없는 이름으로 찍는데 Windows SDK는 `.bat`만 배포하고 CreateProcess가 이를 거부한다(`WinError 193`) → fixture 생성 자체가 시작 불가. ② `runnerctl.py`의 `collect()`가 디렉터리를 `fsync`하는데 Windows가 거부하고, 그 예외가 롤백 블록을 타 **방금 수집한 결과 파일을 전부 지운다** — 13 step은 실제로 다 돌았는데도 아무것도 안 남는다. `tools/win_fixture_shim.py`·`tools/win_runner_shim.py`가 공식 코드를 수정하지 않고 import해 프로세스 실행과 디렉터리 fsync만 교정한다. 런북 0-4의 `apkanalyzer -h` 확인은 shell이 PATHEXT로 해결하므로 통과해 이 문제를 가린다 |
 | 2026-08-04 | `work/`를 통째로 `.gitignore`에 넣었다. 출력 디렉터리를 이름마다 지정하던 방식은 다른 이름으로 쓴 run(2차 phase·재시도)이 조용히 커밋 대상이 되게 했고, `ASSIGNMENT.json`에는 `run_token_secret`이 들어 있다 |

@@ -2,9 +2,9 @@
 
 ## 문서 상태
 
-- 상태: `DESIGN_ONLY_NO_APP_NO_MISSION_LOCK`
-- 작성일: `2026-07-29 KST`
-- 제품 구현: 시작하지 않음
+- 상태: `FIXTURES_GENERATED` (2026-08-04 갱신, 원안 작성 `2026-07-29 KST`)
+- 제품 구현: 완료. 변형 4종 생성기는 `tools/make_probe_variants.py`
+- 생성물: `test-fixtures/probe/v{1,2,3,4}-*/PUBLIC_INPUT.json` — 13·14·18·26 step
 - 공식 정본: `release_v3/candidate_kit/PROBE_INPUT.schema.json`,
   `release_v3/candidate_kit/08_PROBE_MODE_CONTRACT.md`
 
@@ -177,15 +177,26 @@
 3. 동일 release의 `APP.apk` 생성
 4. 공식 harness로 base `PUBLIC_RUN/PROBE_INPUT.json` 생성
 
-프로젝트 내부 예정 위치:
+프로젝트 내부 위치 (2026-08-04 생성됨):
 
 ```text
 test-fixtures/probe/
-  v1-role-token-permutation/
-  v2-entity-goal-swap/
-  v3-order-repeat-reset/
-  v4-extended-26-step/
+  v1-role-token-permutation/PUBLIC_INPUT.json   13 step
+  v2-entity-goal-swap/PUBLIC_INPUT.json         14 step
+  v3-order-repeat-reset/PUBLIC_INPUT.json       18 step
+  v4-extended-26-step/PUBLIC_INPUT.json         26 step
 ```
 
 각 fixture는 schema validation, Runner 실행, step-result parity, screen/state/receipt evidence 확인을 함께
-통과해야 한다. fixture 생성기나 assertion code는 Android 구현 승인 뒤 작성한다.
+통과해야 한다.
+
+**생성 방식.** `tools/make_probe_variants.py`가 공개 입력을 읽어 위 4종을 쓴다. 위 §1 공통 불변조건을
+기계 검사로 옮겨(step 수, id 유일성, virtual time 순서, event 참조 무결성, `NETWORK_STATE` enum,
+`PUBLIC_*` 토큰 잔존 여부) 공식 schema 검증과 함께 **파일을 쓰기 전에** 돌린다. 실제로 V2에서 event id를
+바꾸며 `REPLAY_OF_EVENT_ID`·`OLDER_EVENT_ID` 갱신을 빠뜨린 결함을 이 검사가 잡았다 — emulator를 태우기
+전에 잡히는 종류다.
+
+생성기는 **제출형 `PROBE_INPUT.json`을 만들지 않는다.** 위 §문서 서두의 이유 그대로, release attestation과
+run token은 공식 `make_local_integration_fixture.py`만 발급할 수 있다. 생성기는 공개 입력 형태의 문서만
+쓰고, 공식 도구에 `--public-input`으로 넘겨 digest와 assignment를 공식 도구가 계산하게 한다.
+`release_v3/`는 읽기만 한다.
