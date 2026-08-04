@@ -230,12 +230,18 @@ class ProductSurface(
     /**
      * A value the user chose in place of one that is already remembered.
      *
-     * This is the only moment where the reuse scope is a question worth asking.
-     * Before anything is stored the user cannot yet know whether they will want
-     * the value again, and asking then only teaches them to answer "이번 주문만" —
-     * which is precisely the answer that stops the app from ever learning. When
-     * they overrule a stored value they know exactly what they mean, so that is
-     * where the app asks.
+     * The change itself is never in question — the user asked for it, so it is
+     * applied to this order at once and the draft shows it. What is asked is how
+     * long it should last, and that is the only moment where the reuse scope is a
+     * question worth asking: before anything is stored the user cannot know
+     * whether they will want the value again, and asking then only teaches them
+     * to answer "이번 주문만", which is precisely the answer that stops the app
+     * from ever learning.
+     *
+     * Holding the value back until the question was answered was worse than
+     * useless. The question renders in the thread while the draft that raised it
+     * is a sheet over the top, so a person changing three options and ordering
+     * never saw it — and ordered with the values they had just replaced.
      */
     data class ScopeChange(
         val slot: SlotDefinition,
@@ -340,10 +346,10 @@ class ProductSurface(
                         // It repeats what is already remembered: no change to make.
                         stored.any { it.value == value.valueToken } -> false
                         else -> {
-                            // It overrules something stored. How far the change
-                            // reaches is the user's to say, so nothing is written.
+                            // It overrules something stored. The change applies to
+                            // this order now; how long it lasts is asked afterwards.
                             scopeChanges += ScopeChange(slot, value.valueToken, stored.first())
-                            return@forEach
+                            false
                         }
                     }
                     remember(

@@ -488,9 +488,6 @@ class MainActivity : Activity() {
             catalog.slot(parsed.baseScopeToken)
         }
         if (baseSlot == null) return
-        // The undo card belongs to the value it was shown for. Answering the next
-        // question moves the conversation past it.
-        firstStored = emptyList()
         // The tap goes into the transcript before the redraw so the screen the
         // user sees next already carries what they just did.
         chat += ChatLine(
@@ -509,25 +506,20 @@ class MainActivity : Activity() {
             return
         }
 
-        // With several dishes carrying the same option, changing it on one of them
-        // is genuinely ambiguous: this dish, this order, or from now on. Quietly
-        // taking the narrowest reading meant the one place a person deliberately
-        // goes to change a value — the draft's 변경 button — was also the one place
-        // that never asked what they meant by it.
+        // A row of the draft names one dish, so changing it there changes that
+        // dish. The value applies at once — it is what the user asked for — and
+        // how long it should last is queued as a question.
         val carrying = surface.state().draftLines.count { decl ->
             decl.slots.any { it.baseSlotId == baseSlot.slotId }
         }
         if (parsed != null && carrying > 1) {
-            scopeChanges = listOf(
-                ProductSurface.ScopeChange(
-                    slot = baseSlot,
-                    valueToken = valueToken,
-                    stored = surface.storedPreferencesFor(baseSlot.scopeToken).firstOrNull(),
-                    lineId = parsed.lineId,
-                ),
+            scopeChanges += ProductSurface.ScopeChange(
+                slot = baseSlot,
+                valueToken = valueToken,
+                stored = surface.storedPreferencesFor(baseSlot.scopeToken).firstOrNull(),
+                lineId = parsed.lineId,
             )
-            firstStored = emptyList()
-            render()
+            act { it.setLineOption(restaurant, parsed.lineId, baseSlot, valueToken) }
             return
         }
 
@@ -538,12 +530,16 @@ class MainActivity : Activity() {
      * Stores a value the user chose for one option slot, at the layer the
      * situation implies.
      *
-     * Nothing remembered yet: the answer becomes the standing one and the app
+     * The value always lands on this order — it is what the user asked for.
+     * Nothing remembered yet: it also becomes the standing answer and the app
      * says so, because a first answer is the best evidence of what this person
      * wants and asking "다음에도 쓸까요?" before there is anything to compare it
      * with only teaches them to answer "이번 주문만". Same as what is remembered:
-     * nothing to store. Different from it: the app writes nothing until the user
-     * says how far the change reaches.
+     * nothing further to store. Different from it: it applies to this order and
+     * how long it should last is queued as a question.
+     *
+     * Both queues append. Changing four options in the draft and being asked
+     * about only the fourth taught nothing about the other three.
      */
     private fun storeChosenValue(
         restaurant: RestaurantDefinition,
@@ -553,8 +549,7 @@ class MainActivity : Activity() {
         val stored = surface.storedPreferencesFor(slot.scopeToken)
         when {
             stored.isEmpty() -> {
-                firstStored = listOf(StoredOnFirstUse(slot, valueToken))
-                scopeChanges = emptyList()
+                firstStored += StoredOnFirstUse(slot, valueToken)
                 act { it.remember(restaurant, slot, valueToken, stable = true) }
             }
 
@@ -562,11 +557,8 @@ class MainActivity : Activity() {
                 act { it.remember(restaurant, slot, valueToken, stable = false) }
 
             else -> {
-                scopeChanges = listOf(
-                    ProductSurface.ScopeChange(slot, valueToken, stored.first()),
-                )
-                firstStored = emptyList()
-                render()
+                scopeChanges += ProductSurface.ScopeChange(slot, valueToken, stored.first())
+                act { it.remember(restaurant, slot, valueToken, stable = false) }
             }
         }
     }
@@ -717,28 +709,23 @@ class MainActivity : Activity() {
         val change = scopeChanges.firstOrNull()
         if (change != null) {
             val levels = surface.scopeChoicesFor(restaurant, change.slot)
-            val thisDish = change.lineId?.let { lineId ->
-                listOf(
-                    Ui.Chip(label = "이 메뉴만 · 이번 주문") { applyLineOnlyChange(change, lineId) },
-                )
-            }.orEmpty()
             content.addView(
                 Ui.agentCard(
                     context = this,
                     question = "${Particles.withObj(change.slot.label)} " +
-                        "${catalog.valueLabel(change.valueToken)}(으)로 바꿀게요. 어디까지 바꿀까요?",
+                        "${Particles.withInto(catalog.valueLabel(change.valueToken))} " +
+                        "바꿨습니다. 앞으로도 이렇게 할까요?",
                     hint = change.stored?.let {
-                        "지금 기억하고 있는 값은 ${catalog.valueLabel(it.value)}입니다 " +
+                        "기억하고 있는 값은 ${catalog.valueLabel(it.value)}입니다 " +
                             "(${storedScopeLabel(it)})."
-                    } ?: "지금 주문에 이 옵션을 가진 메뉴가 둘 이상입니다.",
-                    chips = thisDish + listOf(
-                        Ui.Chip(label = if (thisDish.isEmpty()) "이번 주문만" else "이번 주문 전체") {
-                            applyScopeChange(change, null)
-                        },
+                    } ?: "이번 주문에는 이미 적용했습니다.",
+                    chips = listOf(
+                        Ui.Chip(label = "이번 주문만") { applyScopeChange(change, null) },
                     ) + levels.map { level ->
                         Ui.Chip(label = changeLevelLabel(level)) { applyScopeChange(change, level) }
                     },
-                    footnote = "고른 범위만 바뀌고, 나머지 범위의 기억은 그대로 둡니다.",
+                    footnote = queueNote(scopeChanges.size + firstStored.size)
+                        ?: "고른 범위만 바뀌고, 나머지 범위의 기억은 그대로 둡니다.",
                 ),
             )
             return
@@ -776,11 +763,8 @@ class MainActivity : Activity() {
                             }
                         },
                     ),
-                    footnote = if (firstStored.size > 1) {
-                        "이어서 정할 것 ${firstStored.size - 1}개가 더 있습니다."
-                    } else {
-                        "'내 취향과 기억'에서 언제든 고치거나 지울 수 있습니다."
-                    },
+                    footnote = queueNote(scopeChanges.size + firstStored.size)
+                        ?: "'내 취향과 기억'에서 언제든 고치거나 지울 수 있습니다.",
                 ),
             )
             return
@@ -827,46 +811,42 @@ class MainActivity : Activity() {
     private fun questionLabel(field: DraftField): String =
         catalog.baseSlotOfLineSlotId(field.slotId)?.label ?: catalog.slotLabel(field.slotId)
 
-    /** Writes a change to a remembered value at the scope the user named. */
+    /** How many more of these are waiting, when more than this one is. */
+    private fun queueNote(remaining: Int): String? =
+        if (remaining > 1) "이어서 정할 것 ${remaining - 1}개가 더 있습니다." else null
+
+    /**
+     * Settles how long a change already applied to this order should last.
+     *
+     * "이번 주문만" writes nothing further: the value is on the draft already, as a
+     * one-off that expires with the session. Each wider level stores at that level
+     * alone and leaves the others as they were.
+     */
     private fun applyScopeChange(
         change: ProductSurface.ScopeChange,
         level: PreferenceScopeLevel?,
     ) {
         val restaurant = currentRestaurant() ?: return
         scopeChanges = scopeChanges - change
-        val wholeOrder = change.lineId != null
-        chat += ChatLine(
-            "나:",
-            level?.let(::changeLevelLabel) ?: if (wholeOrder) "이번 주문 전체" else "이번 주문만",
-        )
+        chat += ChatLine("나:", level?.let(::changeLevelLabel) ?: "이번 주문만")
         chat += ChatLine(
             "에이전트:",
             "${Particles.withObj(change.slot.label)} " +
-                "${Particles.withInto(catalog.valueLabel(change.valueToken))} " +
                 if (level == null) {
                     val kept = change.stored?.let {
                         " 기억한 ${catalog.valueLabel(it.value)}은(는) 그대로 둡니다."
                     }.orEmpty()
                     "이번 주문에만 적용합니다.$kept"
                 } else {
-                    "${changeLevelLabel(level)} 범위로 바꿨습니다."
+                    "${Particles.withInto(catalog.valueLabel(change.valueToken))} " +
+                        "${changeLevelLabel(level)} 범위로 저장했습니다."
                 },
         )
+        if (level == null) {
+            render()
+            return
+        }
         act { it.rememberAtLevel(restaurant, change.slot, change.valueToken, level) }
-    }
-
-    /** Applies the change to the one dish it was addressed to, and nothing else. */
-    private fun applyLineOnlyChange(change: ProductSurface.ScopeChange, lineId: String) {
-        val restaurant = currentRestaurant() ?: return
-        scopeChanges = scopeChanges - change
-        chat += ChatLine("나:", "이 메뉴만 · 이번 주문")
-        chat += ChatLine(
-            "에이전트:",
-            "이 메뉴의 ${Particles.withObj(change.slot.label)} " +
-                "${Particles.withInto(catalog.valueLabel(change.valueToken))} 바꿨습니다. " +
-                "다른 메뉴와 저장된 기억은 그대로입니다.",
-        )
-        act { it.setLineOption(restaurant, lineId, change.slot, change.valueToken) }
     }
 
     /** The same three scopes, named as the change they make. */
@@ -1065,6 +1045,11 @@ class MainActivity : Activity() {
         val rateable = reviewableActionId
         val reviewed = rateable == null || state.reviews.any { it.actionId == rateable }
         if (reviewed && !settlingReview) return
+        // Ordering straight from the draft can leave memory questions behind it —
+        // the sheet covers the thread, so they were queued rather than shown. They
+        // are about the order that just happened, so they come first, one at a
+        // time, before the screen moves on to rating it.
+        if (scopeChanges.isNotEmpty() || firstStored.isNotEmpty()) return
 
         val requested = surface.pendingEvaluationRequest()
         if (!reviewed) {

@@ -303,31 +303,56 @@ class ChatIntakeTest {
     }
 
     @Test
-    fun `a value contradicting a stored one is not written until its reach is stated`() {
+    fun `a value contradicting a stored one applies at once and asks only how long`() {
         val surface = surface()
         surface.startNewOrder(daon)
         surface.say(daon, "앞으로도 맵지 않게 해줘")
 
         val turn = surface.say(daon, "아주 맵게 해줘")
 
-        assertTrue("nothing is applied while the reach is open", turn.applied.isEmpty())
+        // The user asked for it, so it is on the draft. Withholding it until the
+        // scope question was answered meant a draft change made from the sheet —
+        // which covers the thread the question renders in — could be ordered away.
+        assertEquals("spice.very_hot", surface.field(Slots.SPICINESS)?.value)
+        assertEquals(listOf("spice.very_hot"), turn.applied.map { it.valueToken })
         assertEquals(
+            "and how long it lasts is asked",
             listOf("spice.very_hot"),
             turn.scopeChanges.map { it.valueToken },
         )
         assertEquals(
-            "the stored preference is untouched until the user says otherwise",
+            "the stored preference is untouched until the user answers",
             "spice.mild",
             surface.storedPreferencesFor(Slots.SPICINESS).single().value,
         )
 
-        surface.rememberAtLevel(daon, catalog.slot(Slots.SPICINESS), "spice.very_hot", level = null)
-        assertEquals("spice.very_hot", surface.field(Slots.SPICINESS)?.value)
+        // 이번 주문만 is the answer that needs no further write: the one-off is
+        // already there and expires with the session.
+        surface.nextOrderSession(daon)
         assertEquals(
-            "이번 주문만 leaves what is remembered exactly as it was",
+            "the one-off does not follow the order it belonged to",
             "spice.mild",
-            surface.storedPreferencesFor(Slots.SPICINESS).single().value,
+            surface.field(Slots.SPICINESS)?.value,
         )
+    }
+
+    @Test
+    fun `every changed option raises its own question, not just the last`() {
+        // Four changes in the draft used to produce one question about the fourth.
+        val surface = surface()
+        surface.startNewOrder(daon)
+        surface.say(daon, "앞으로도 맵지 않게 해줘")
+        surface.say(daon, "앞으로도 밥은 적게")
+
+        val turn = surface.say(daon, "아주 맵게 밥 많이")
+
+        assertEquals(
+            "both contradictions are queued",
+            setOf("spice.very_hot", "rice.large"),
+            turn.scopeChanges.map { it.valueToken }.toSet(),
+        )
+        assertEquals("spice.very_hot", surface.field(Slots.SPICINESS)?.value)
+        assertEquals("rice.large", surface.field(Slots.RICE)?.value)
     }
 
     @Test
