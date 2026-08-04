@@ -13,10 +13,8 @@ import org.junit.Test
  * of them has to survive the parser, because the guide promises the app acts on
  * them rather than asking again.
  *
- * `DemoScriptTranscriptTest` walks the same E1–E4 story, but it reaches for
- * `addLine(menuToken)` wherever the guide types a menu name, so the sentences
- * that name a menu were never actually parsed. These tests close that gap: they
- * only ever type.
+ * These tests exercise the documented sentences through the same parser used by
+ * the product input field; they do not call token-level menu APIs directly.
  */
 class GuideScriptSentencesTest {
 

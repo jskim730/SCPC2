@@ -1,0 +1,29 @@
+{
+  "authority_counter": 3,
+  "authority_versions": {
+    "PUBLIC_AUTHORITY_V1": 1,
+    "PUBLIC_AUTHORITY_V2": 2
+  },
+  "rejected_events": [
+    {
+      "eventId": "EVENT-PUBLIC-DECISION-01",
+      "reason": "DUPLICATE_EVENT_NO_ADDITIONAL_COMMIT",
+      "incomingAuthorityVersion": 0,
+      "currentAuthorityVersion": 0,
+      "seq": 18
+    },
+    {
+      "eventId": "EVENT-PUBLIC-FACT-01",
+      "reason": "ALREADY_PROCESSED_EVENT_REDELIVERED",
+      "incomingAuthorityVersion": 2,
+      "currentAuthorityVersion": 2,
+      "seq": 20
+    }
+  ],
+  "evidence_id": "ev.state.authority",
+  "step_ids": [
+    "PUBLIC-13"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "namespace": "full"
+}

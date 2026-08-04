@@ -1,7 +1,7 @@
 {
   "schema_version": "3.0.0-draft",
   "content_class": "PUBLIC_REHEARSAL_SELF_ASSESSMENT_NOT_OFFICIAL",
-  "notes": "2026-08-04. Anchors rest on five completed Runner-driven runs (work/PUBLIC_RUN, RUN_V1..V4, all run_status COMPLETED) plus 187 JVM tests on the current tree. The device runs used APK sha256 34f45f0e...; the current binary reproduces the baseline 13-step decision sequence exactly in OfficialPublicInputTest, but has not itself been through a Runner run. No anchor is claimed above 3 for that reason.",
+  "notes": "2026-08-04. Anchors rest on the final signed RC4 public run (work/RC4_PUBLIC_RUN), four signed RC1 independent variants (work/RC1_RUN_V1..V4), and 195 JVM tests on both debug and release. RC4 passed the official schema, exact 35/35 result-reference-file-internal-ID closure, digest chaining, restart epoch change, and zero-invocation checks. No anchor is claimed above 3 because official PRACTICE-B and the remaining human screen/export parity check are not complete.",
   "facts": [
     {
       "probe_id": "CORE-1",
@@ -9,8 +9,8 @@
       "expected_property": "wrong-goal/entity distractor invariance and minimal current context",
       "difference": "V1·V2 변형은 참가자가 생성한 것이고, PUBLIC_REHEARSAL_CASES의 PRACTICE-B 표면은 아직 돌리지 않았다.",
       "evidence_ids": [
-        "work/RUN_V1/PROBE_RESULT.json",
-        "work/RUN_V2/PROBE_RESULT.json",
+        "work/RC1_RUN_V1/PROBE_RESULT.json",
+        "work/RC1_RUN_V2/PROBE_RESULT.json",
         "ProductFlowProbeTest#a draft carries only the options its own dishes have"
       ],
       "anchor": 3
@@ -19,9 +19,9 @@
       "probe_id": "CORE-2",
       "observed": "공개 입력의 CORRECT_FACT·REVOKE_SCOPE·DELETE_FACT(05·06·07)와 PROCESS_KILL_RELAUNCH(09) 뒤에도 삭제값이 부활하지 않았다. 일회성 지시는 저장 취향을 덮어쓰지 않고, 철회는 fact를 남긴 채 자동 적용만 무효화한다.",
       "expected_property": "current authority and delete dominate stale state",
-      "difference": "권위 역전은 공개 입력과 JVM 테스트에서 확인했고, 기기에서의 재확인은 이전 binary 기준이다.",
+      "difference": "권위 역전은 signed RC1 공개 입력과 JVM 테스트에서 확인했지만, official PRACTICE-B 표면은 아직 돌리지 않았다.",
       "evidence_ids": [
-        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "work/RC4_PUBLIC_RUN/PROBE_RESULT.json",
         "ProductFlowProbeTest#E3 applies a one-off over a stored preference without changing it",
         "ChatIntakeTest#a chat withdrawal keeps the stored value and asks again next order"
       ],
@@ -45,8 +45,8 @@
       "expected_property": "change-point response and scoped recovery",
       "difference": "네 상태(ONLINE/DELAYED/OFFLINE/UNKNOWN) 중 공개 입력이 밟는 경로만 Runner로 확인했고, 나머지는 앱 화면과 JVM 테스트로 확인했다.",
       "evidence_ids": [
-        "work/PUBLIC_RUN/PROBE_RESULT.json",
-        "work/RUN_V4/PROBE_RESULT.json",
+        "work/RC4_PUBLIC_RUN/PROBE_RESULT.json",
+        "work/RC1_RUN_V4/PROBE_RESULT.json",
         "core/ProbeOperationContractTest"
       ],
       "anchor": 3
@@ -57,8 +57,8 @@
       "expected_property": "restart reconciliation and exactly-once outcome",
       "difference": "kill·중복·순서뒤바뀜을 각각 확인했고, 세 가지를 한 run에서 겹쳐 넣은 경우는 V4 한 번뿐이다.",
       "evidence_ids": [
-        "work/RUN_V3/PROBE_RESULT.json",
-        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "work/RC1_RUN_V3/PROBE_RESULT.json",
+        "work/RC4_PUBLIC_RUN/PROBE_RESULT.json",
         "core/MetamorphicProbeTest"
       ],
       "anchor": 3
@@ -69,7 +69,7 @@
       "expected_property": "late outcome affects later decision with evidence integrity",
       "difference": "지연 결과는 평가 요청 한 종류만 시험했다. export 산출물과 화면 표시의 대조는 사람이 한 번 더 확인해야 한다.",
       "evidence_ids": [
-        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "work/RC4_PUBLIC_RUN/PROBE_RESULT.json",
         "ProductFlowProbeTest#a draft carries only the options its own dishes have",
         "delivery/DemoScriptTranscriptTest"
       ],

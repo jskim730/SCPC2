@@ -1,341 +1,202 @@
-﻿# MISSION_AND_TECHNICAL_NOTE — 초안
+# 개인 배달 주문 에이전트
 
-제품: 개인 배달 주문 에이전트 · 참가자: First_penguin · 초안 갱신: 2026-08-03 KST
+Mission & Technical Note · 참가자: First_penguin · 2026-08-05 KST
 
-> **초안 상태.** 8/4 기기 검증 뒤 PDF로 변환해 제출한다. 이 문서는 제출된 Mission 선언
-> (`SCPC2026_R2_MISSION_First_penguin.pdf`, T+48 동결)과 일치하며, 공식 결과경계를 지킨다 —
-> expected relation·PASS/FAIL·공식 점수 추정을 어디에도 적지 않는다.
+## 1. Mission과 Primary value
 
----
+> 비슷한 취향과 조건으로 배달 주문을 반복하는 개인 사용자가, 현재도 유효하고 자동 적용이 허용된 취향만 재사용해 앱 중단과 조건 변화 뒤에도 한 식당의 주문 초안을 최소한의 확인만으로 완성하도록 돕는다.
 
-## 1. Mission — 제출 선언과 동일
+핵심 문제는 "기억이 많을수록 편리하다"가 아니다. 주문마다 달라지는 조건, 식당마다 다른 옵션,
+사용자의 정정과 철회가 누적되면 오래된 기억은 오히려 잘못된 자동화를 만든다. 이 제품의 Primary
+value는 **반복 입력을 줄이면서도, 불확실하거나 권한이 없는 값은 다시 확인하는 것**이다.
 
-> 비슷한 취향과 조건으로 배달 주문을 반복하는 개인 사용자가, **현재도 유효하고 자동 적용이
-> 허용된 취향만** 재사용해 앱 중단과 조건 변화 뒤에도 한 식당의 주문 초안을 **최소한의
-> 확인만으로** 완성하도록 돕는다.
+장기 목표는 여러 주문 session 뒤에도 다음 세 가지가 함께 유지되는 것이다.
 
-**대상 사용자와 핵심 문제.** 배달앱의 식당·메뉴·옵션 구조에 익숙하지 않거나 복잡한 선택 과정에
-부담을 느끼면서도 배달 주문을 반복하는 사람. 기존 재주문 기능은 이전 주문을 그대로 불러오지만
-**평소 취향과 그때만의 선택을 구분하지 못하므로**, 예산이나 조건이 달라지면 사용자가 다시 조정해야
-하고, 탐색 중 앱이 종료되면 비교하던 후보와 판단 과정을 다시 확인해야 한다.
+- 유효하고 허용된 취향은 주문서에 먼저 채워져 반복 부담이 줄어든다.
+- 오늘의 지시, 정정, 철회와 삭제는 과거 기억보다 우선한다.
+- 품절, 미제공 옵션, network 지연과 process 종료 뒤에도 영향받은 부분만 복구한다.
 
-**Primary value.** 현재 상황과 취향에 맞는 **유효한** 개인 주문 초안을 완성하기까지 필요한
-탐색·선택의 반복 부담을 줄이는 것. 단, 사용자의 현재 요청과 변경·삭제 의사를 반영하고, 현재 주문
-가능한 메뉴와 옵션을 지킨다.
+모든 식당, 메뉴, 가격, 재고, 주문과 평가는 앱 안의 합성 데이터다. 실제 주문, 결제, 계정 또는
+외부 서비스 변경은 발생하지 않는다.
 
-## 2. 제품 흐름 — 채팅방형 주문
+## 2. 한 화면에서 이어지는 제품 경험
 
-앱은 메신저 형태다. 입력창이 화면 하단에 고정되고, 대화 스레드가 위로 쌓인다.
+앱은 채팅과 구조화된 주문서를 결합한다. 사용자가 자연어로 조건을 말하면 후보를 보여주고, 선택한
+메뉴의 주문서에서 확실한 값은 채우고 나머지만 질문한다. 각 행은 값뿐 아니라 **현재 적용 범위와
+출처**를 함께 보여준다. 사용자는 같은 화면에서 값을 바꾸고, 자동 적용 권한을 철회하고, 가상 주문을
+확정할 수 있다.
 
-1. 사용자가 자연어로 조건을 말한다 — "1만5천원 이하로 따뜻한 국물, 앞으로도 맵지 않게 해줘".
-2. 에이전트가 조건·저장 취향·내 평점을 근거로 **식당·메뉴 후보**를 근거 배지와 함께 제시한다.
-3. 사용자가 후보를 고르면 **항목별 주문 초안서**가 만들어진다. 저장된 취향 중 이번에도 유효하고
-   자동 적용이 허용된 값만 각 항목에 채워지고, 값의 출처(오늘 입력·직접 저장·리뷰 승인)가 행마다
-   표시된다.
-4. **빈 칸과 불확실한 값만 질문이 된다.** 아직 아무것도 기억하지 않은 항목의 첫 값은 묻지 않고
-   기억하되 **기억했다고 말하고 "이번 주문만"으로 되돌릴 칩을 함께 준다.** 적용 범위를 묻는 것은
-   기억한 값과 **다른 값**을 고를 때다 (§3.5). 모호한 표현·이 식당이 제공하지 않는 옵션은 추측
-   없이 되묻는다.
-5. 확인이 끝나면 주문서 초안 카드의 확정 버튼으로 **가상 주문을 한 번만 기록**한다 (app-local,
-   실제 주문·결제 없음). 남은 확인이 있으면 그 버튼이 남은 건수를 대신 말한다.
-6. 주문 뒤 **평가 요청이 도착**하고, 사용자가 평점·한 줄 리뷰를 남긴다. 리뷰에서 추출한 취향
-   후보는 값·대상 식당·메뉴·적용 범위를 명시해 물은 뒤 **동의한 범위에만** 저장한다.
+주문 뒤에는 app-local 지연 outcome으로 평가 요청이 도착한다. 리뷰 문장에서 취향 후보를 찾더라도
+자동 저장하지 않는다. 값, 대상, 적용 범위를 화면에 제시하고 사용자가 승인한 내용만 다음 주문에
+사용한다.
 
-화면 상단 바는 주문 중인 식당과 배달지·network 상태를 보여주고, 흐름의 현재 위치는 스레드 자체가
-말한다 — 마지막 카드가 지금 답할 것이고, 주문서 초안의 확정 버튼이 남은 확인 건수를 표시한다.
+`내 취향과 기억` 화면은 저장된 사실, 적용 범위, 출처와 자동 적용 여부를 한곳에 모은다. 정정, 철회,
+삭제 및 전체 Reset은 모두 production state에 즉시 반영된다.
 
-## 3. E1–E4 장기 인과관계와 session 경계
+## 3. E1-E4 장기 인과관계
 
-### Episode 정의 (Mission 선언 §3과 동일)
-
-- **E1 학습.** 전역 기본 취향 / 같은 메뉴 유형 취향 / 특정 식당·메뉴 예외와 자동 적용 허용
-  범위를 **현재 주문만의 조건과 구분해** 저장. 평점은 해당 식당·메뉴의 추천 근거로, 리뷰 추출
-  후보는 범위를 물어 동의한 범위에만.
-- **E2 재사용.** 현재 지시 > 식당·메뉴 예외 > 같은 유형 취향 > 전역 기본 순으로 **유효하고
-  허용된 값만** 항목에 채움. 다른 대상·목표의 기록과 미승인 리뷰 후보는 제외.
-- **E3 예외.** 일회성 지시가 저장 취향과 충돌하거나 자동 적용 허용이 철회되면 현재 지시를
-  우선해 **해당 항목만** 다시 판단. 안정 취향과 다른 항목의 허용 범위는 보존.
-- **E4 복구.** 품절·process 종료 뒤에도 **영향받은 항목만** 다시 선택. 미실행 주문을 완료로
-  오인하거나 중복 실행하지 않고, 삭제한 값·오래된 기록을 부활시키지 않음.
-
-### 재현 순서 (`INSTALL_AND_USE_GUIDE` 3장과 데모 영상이 이 순서를 따른다)
-
-앱에는 이 순서를 대신 눌러주는 버튼이 없다. 심사관은 설치 가이드의 문장을 직접 입력하고,
-시간 경과·재고 변화처럼 사용자가 말할 수 없는 사건만 `합성 환경 조작` 패널에서 일으킨다.
-
-| Ep | 무대 | 보이는 것 |
+| 단계 | 사용자 여정 | 뒤 episode를 바꾸는 원인 |
 |---|---|---|
-| E1 | 마라향 실험점 | 조건 입력 → 추천 → 고수 빼기 학습 → 리뷰에서 "고수 향이 세서 힘들었어" → **"같은 메뉴 유형이면 어디서든"** 범위 승인 |
-| E2 | 금손분식 실험점 | **다른 식당**, 같은 마라 유형 두 메뉴에 고수 빼기 자동 적용, 유료 치즈 추가는 이번 주문만 |
-| E3 | 금손분식 실험점 | "이번 주문만 아주 맵게"(일회성 예외) · 수저 자동 적용 철회 · 저장 맵기를 중간맛으로 정정 |
-| E4 | 마라향 실험점 | 고수는 유지 적용, **이 집엔 중간맛이 없어 맵기만 재질문**(자동 대체 없음) · 사이드 품절 → 그 항목·총액만 재계산 · process 종료 후 재실행 연속성 |
+| E1 Learn | 마라향 실험점에서 맵기, 수저, 파를 정하고 주문 뒤 고수 리뷰를 남긴다 | 직접 말한 stable 취향과 승인한 메뉴 유형 범위의 리뷰 기억이 생성된다 |
+| E2 Reuse | 다른 식당인 금손분식 실험점에서 마라 메뉴와 일반 떡볶이를 함께 담는다 | 전역 취향은 두 메뉴에, 고수 취향은 마라 유형에만 자동 적용되어 질문 수가 줄어든다 |
+| E3 Exception | 오늘만 아주 맵게 요청하고, 수저 자동 적용을 철회하며, 저장된 맵기를 중간맛으로 정정한다 | 일회성 지시는 현재 주문만 이기고, 철회와 정정은 해당 범위의 이후 판단만 바꾼다 |
+| E4 Recover | 마라향 실험점에서 중간맛 미제공과 사이드 품절을 겪은 뒤 process를 재시작한다 | 제공할 수 없는 맵기와 품절 항목만 다시 열리고, 다른 항목과 확정 기록은 보존된다 |
 
-### session 경계
+session 경계는 주문 단위다. 새 주문은 새 대화와 one-off 영역을 만들지만, 사용자가 허용한 stable
+기억과 action ledger는 이어진다. process 경계는 session 경계가 아니다. 앱을 종료해도 현재 주문서,
+대화, memory, action과 outcome이 디스크에서 복원된다.
 
-step의 `session_id`가 달라지거나 `ADVANCE_SESSION`이 오면 새 주문 session이 열린다. 이번 주문만의
-조건·일회성 지시(one-off)는 session과 함께 만료되고, 안정 취향(stable)과 permission·평점·리뷰는
-남는다. 예산·음식 성격 같은 **조건은 문장에 "앞으로도"가 있어도 절대 stable로 저장하지 않는다** —
-조건은 현재 주문 session의 것이다.
+대표적인 downstream causal change는 다음과 같다.
 
-### 3.5 저장 층위와 그 기본값
+- E1의 고수 범위 승인이 E2의 다른 식당 마라 메뉴를 자동으로 채우되 일반 메뉴에는 영향을 주지 않는다.
+- E3의 수저 권한 철회가 이후 주문에서 수저를 다시 묻게 하지만 다른 취향은 그대로 유지한다.
+- E3의 중간맛 정정이 E4에 전달되지만, 해당 식당이 제공하지 않으므로 임의 대체하지 않고 맵기만 묻는다.
+- E4의 품절 event가 사이드와 총액만 무효화하고 본 메뉴, 다른 옵션과 이미 기록된 action을 보존한다.
 
-저장은 네 층이고, **좁은 층이 넓은 층을 이긴다.**
+## 4. Signature mechanism - ASPR
 
-| 층 | 무엇 | 수명 |
-|---|---|---|
-| 이번 주문만 | `ONE_OFF` | 이 session이 끝나면 만료 |
-| 이 식당·이 메뉴만 | `STABLE` specificity 2 | 예외. 그 조합에서만 |
-| 같은 메뉴 유형 | `STABLE` specificity 1 | catalog가 그 유형에 재사용 가능하다고 authored한 slot만 |
-| 모든 메뉴 | `STABLE` specificity 0 | 전역 기본 |
+대표 기제는 **Authority-Scope Projection and Repair**, ASPR이다. 기억을 문자열 목록으로 저장하는 대신
+각 값을 현재 주문서에 적용할 수 있는 **권위가 붙은 사실**로 표현하고, 그 사실이 만든 필드와 action의
+의존관계를 함께 유지한다.
 
-각 층은 **자기 token·fact·tombstone·자동적용 permission을 따로** 갖는다. 한 층을 저장·정정·
-철회·삭제해도 다른 층은 건드리지 않는다.
+### 4.1 Typed fact
 
-**기본값을 정하는 규칙은 하나다 — 처음이면 기억하고, 다르면 묻는다.**
+각 fact는 다음 정보를 가진다.
 
-| 상황 | 하는 일 |
+| 차원 | 의미 |
 |---|---|
-| 문장이 `앞으로도`라고 말함 | 전역 저장. 묻지 않는다 |
-| 문장이 `이번 주문만`이라고 말함 | one-off. 묻지 않는다 |
-| 범위를 말하지 않았고 **그 항목에 기억이 없음** | **전역 저장** 후 "기억했습니다"라고 말하고 `이번 주문만 할래요` 칩을 함께 낸다 |
-| 범위를 말하지 않았고 **기억한 값과 같음** | 이번 주문에 확정만 한다 |
-| 범위를 말하지 않았고 **기억한 값과 다름** | **아무것도 쓰지 않고** 네 칩으로 범위를 묻는다 — 이번 주문만 / 이 식당·이 메뉴만 / 같은 메뉴 유형 / 항상 이걸로 |
-| 예산·시간 같은 조건(`USER_CONDITION`) | 문장에 `앞으로도`가 있어도 **절대 stable 아님** |
-| 리뷰에서 추출한 후보 | 값·대상·범위를 **명시해 물은 뒤 동의한 범위에만** (Mission 선언 E1이 명문으로 요구) |
+| kind | stable, one-off, current authority, revoked scope, delayed outcome 등 수명과 역할 |
+| scope | 이번 주문, 이 식당-이 메뉴, 같은 메뉴 유형, 전역 중 어디에 적용되는지 |
+| authority | 사용자 직접 지시, 현재 정정, 승인된 리뷰 등 어떤 근거가 최신인지 |
+| permission | 자동 적용이 허용됐는지, 철회됐는지 |
+| lineage | 이 fact가 만든 주문서 필드, action, outcome과의 의존관계 |
 
-**왜 첫 값을 묻지 않는가.** 아무것도 저장되지 않은 시점에 "다음에도 쓸까요?"는 사용자가 답할
-근거가 없는 질문이고, 실제로는 안전해 보이는 `이번 주문만`을 고르게 만든다. 그러면 앱은 영원히
-아무것도 배우지 못하고, 선언한 primary value(반복 부담 감소)가 발생하지 않는다. 범위가 실제로
-의미를 갖는 순간은 사용자가 **기억된 값을 뒤집을 때**다. 그때는 무엇을 뒤집는지 알고 답한다.
+범위는 `이번 주문 > 이 식당-이 메뉴 > 같은 메뉴 유형 > 전역` 순으로 구체적이다. 단순히 가장 최근인
+값을 고르지 않고 **현재 entity와 goal에 관련되고, 아직 유효하며, 자동 적용 권한이 있는 후보** 중에서
+구체성과 권위를 비교한다. 예산과 희망시간은 매 주문 달라지는 사용자 조건이므로 stable memory로
+승격하지 않는다.
 
-무단 저장이 되지 않게 하는 것은 사전 질문이 아니라 **가시성과 되돌림**이다: 저장은 그 자리에서
-말해지고, 같은 카드의 칩 한 번으로 취소되며, `내 취향과 기억`에 층위별로 전부 나열되어 정정·
-철회·삭제된다.
+### 4.2 Projection
 
-### Downstream causal change (두 개 이상 요구 — 네 개 제시)
-
-1. E1의 전역·메뉴 유형 취향이 **E2의 새 식당** 초안 값과 질문 목록을 바꾼다.
-2. E2 리뷰에서 승인한 식당·메뉴 예외가 **E4의 동일 식당·메뉴 조합** 초안 값을 바꾼다.
-3. E3의 수저 자동 적용 철회 뒤 **E4에서는 수저만** 다시 묻는다.
-4. E4 사이드 품절 시 **사이드·가격·총액만** 다시 계산되고 본 메뉴와 독립 옵션은 보존된다.
-
-## 4. Architecture — 판단은 generic core, 의미는 데이터
-
-```
-ui/         화면(채팅 스레드·초안서·기억 관리). 판단하지 않는다.
-delivery/   배달 표현 계층. 여기만 한국어·메뉴·금액을 안다.
-              SyntheticCatalog(불변조건 강제) · NaturalLanguage(문장→구조화)
-              Recommender(결정적 순위) · ProductSurface(제품 조작→13종 operation)
-core/       generic production core. 값 철자를 해석하지 않는다.
-              AsprEngine(선택→투영→부분 무효화) · ProductionCore(13종 op dispatcher,
-              ledger, evidence) · ProductionState(영속 state 문서 하나)
-probe/      ProductionProbeAdapter · PublicProbeRunner (public UI와 protected
-            component가 같은 adapter·core를 호출)
-platform/   Android 저장소·evidence 파일·release identity
-```
-
-- `core/`에는 **한국어 문자열·메뉴 지식이 0줄**이다. 모든 어휘·메뉴·금액·이벤트는 사람이 작성한
-  단일 asset `assets/synthetic/catalog.json`(식당 6·메뉴 19·option slot 14·menu type 5)에 있고,
-  `SyntheticCatalog.parse`가 token 유일성·가격 양수·모호 표현 거부·개인정보 유사 label 금지 등
-  불변조건을 제품 코드에서 강제한다.
-- 이 경계가 **production parity의 근거**다: 화면이 쓰는 조립 함수와 probe가 치는 경로가 같은
-  core를 지나고, core는 domain을 모르므로 공개/official 값 차이로 분기할 수 없다.
-- 런타임 무작위 생성·외부 조회를 쓰지 않는 이유: paired comparison이 "같은 시작 snapshot bytes·
-  같은 seed·같은 event order"를 요구하고, 한 파일이 APK와 SOURCE.zip에 byte-for-byte 같이 들어가
-  검토 가능해야 하기 때문이다.
-
-## 5. 대표 기제 — 권위·범위 기반 취향 조정 및 부분복구기 (ASPR)
-
-**Claim (Mission 선언 §5와 동일).** ASPR은 최근 주문을 그대로 불러오는 대신, 저장된 취향마다
-① 적용할 식당·메뉴(범위), ② 어느 지시가 더 최신인지(권위), ③ 자동 적용이 허용됐는지(허용)를
-구분한다. 이번 주문에도 유효하고 허용된 취향만 각 항목 초안에 반영하고, 불확실한 값은 묻는다.
-정정·철회·삭제·품절이 발생하면 **영향받은 메뉴·옵션만** 다시 확인하고 나머지는 보존한다.
-
-### 동작 원리
-
-- **선택(Select).** slot 식별은 addressing role에서만 파생한다
-  (`PRESERVED_SCOPE → TARGET_ENTITY → PRIMARY_GOAL → 현재 target → 현재 goal`).
-  authority는 불투명 token을 처음 본 순서로 monotonic 번호에 사상한다 — `PUBLIC_AUTHORITY_V1`의
-  "V1"을 파싱하지 않는다.
-- **투영(Project).** 제품 화면이 draft 구조(`DraftLineDecl`: 항목 ID·메뉴·menu type·slot binding)를
-  선언하면 항목별 field가 만들어지고, scope가 맞는 취향이 specificity 순
-  (`현재 주문 직접 지시 > 현재 정정·철회·삭제 > 식당·메뉴 override > MENU_TYPE > 전역 > ASK`)으로
-  채워진다. 같은 범위 안에서는 더 높은 authority가 이긴다.
-- **부분 무효화(Partial invalidation).** 품절 event·항목 삭제·철회는 의존하는 field만 다시 열고,
-  독립 field·다른 항목·저장 기억은 보존한다.
-
-### 3-scope 취향 저장
+ASPR은 현재 주문의 식당, 메뉴, session과 제공 가능한 option schema를 입력으로 받아 적용 가능한
+fact만 주문서 필드로 투영한다.
 
 ```text
-PreferenceKey(slotId, scopeLevel ∈ {GLOBAL_DEFAULT, MENU_TYPE, RESTAURANT_MENU_OVERRIDE},
-              menuTypeId?, restaurantId?, menuId?)
+현재 state + 현재 menu schema
+  -> entity / goal / lifetime / scope / permission 필터
+  -> current authority 우선순위
+  -> 주문서 field와 provenance 생성
+  -> 불확실·미제공 값은 NEEDS_CONFIRMATION
 ```
 
-- `MENU_TYPE` 취향은 catalog author가 부여한 `menu_type` token이 같고, 그 유형의 stable slot이며,
-  현재 식당이 그 slot을 제공할 때만 식당을 건넌다. 표시 이름의 유사성으로는 절대 건너지 않는다.
-- 식당마다 옵션 가짓수가 다르다(`offered_values`). 저장 값이 현재 식당에 없으면 **자동 대체하지
-  않고 그 field만 다시 연다** (E4의 "중간맛 없음 → 맵기만 재질문"이 이 규칙의 화면이다).
+core는 한국어 문장이나 메뉴명을 기준으로 분기하지 않는다. 자연어 계층은 catalog의 표현을 token으로
+변환하고, generic core는 role, scope, authority, state transition만 처리한다. 따라서 식당명, 메뉴명,
+표현 또는 event 순서가 바뀌어도 같은 규칙이 적용된다.
 
-### full / claim-off의 허용된 차이
+### 4.3 Repair
 
-claim-off는 **같은 APK, 같은 코드 경로**에서 `asprEnabled=false`로 실행되는 비교 기준이다.
+정정, 철회, 삭제 또는 catalog event가 들어오면 ASPR은 해당 사실에서 시작하는 dependency graph를
+따라 파생 필드만 무효화한다. 유효한 sibling field, 다른 scope의 기억과 이미 확인된 action은 유지한다.
 
-| | full (ASPR) | claim-off |
-|---|---|---|
-| lifetime·scope·permission typing, dependency edge | 있음 | **없음** |
-| 현재 session에서 말하지 않은 값 | 유효·허용이면 자동 적용 | 자동 적용하지 않고 다시 물음 |
-| 삭제·tombstone·idempotency·재시작·receipt·추천 순위·평점 | **양 arm 동일 (공통 infrastructure)** | 동일 |
+- 정정: 같은 scope의 current authority를 새 값으로 교체하고 영향 필드를 다시 투영한다.
+- 철회: 값을 지우는 대신 그 scope의 자동 적용 권한을 끄고 다음 주문에서 다시 묻게 한다.
+- 삭제: 원문 fact와 descendant를 제거하고 최소 tombstone만 남겨 export 또는 재시작 뒤 부활을 막는다.
+- 품절: 해당 line의 menu 또는 option과 총액만 다시 열고 다른 line은 보존한다.
 
-두 arm은 state namespace가 완전히 분리되어 상호 오염이 없고, 같은 catalog snapshot digest에서
-출발한다.
+## 5. Architecture와 production parity
 
-### Metric — VIL
+```text
+MainActivity / MemoryActivity / ComparisonActivity
+                         |
+Public Probe UI ---------+--> ProductSurface / ProductionCore
+Protected Probe adapter -+             |
+                                      ProductionState repository
+                                      + action / outcome ledger
+                                      + EvidenceWriter
+```
 
-**사용자 해결 부담(VIL) = 유효한 초안 완성까지 사용자가 추가로 해결한 입력 항목 수 + 최종 확인
-횟수의 합.** 측정은 **초안이 사용자에게 물은 항목 수** 기준이다 — 항목을 더 담아 생긴 확인을
-기제의 이득으로 세지 않는다 (예: 메뉴 1개에 1건 질문 vs 메뉴 2개에 0건 질문). ASPR의 목표는
-사용자의 현재 요청·삭제 의사를 어기거나 주문을 중복 처리하지 않으면서 E2 재사용과 E4 부분복구에서
-VIL을 claim-off보다 낮추는 것이다. guardrail 위반 0이 전제이며, 위반을 동반한 이득은 이득으로
-주장하지 않는다.
+제품 UI, 공개 Probe UI와 protected Probe adapter는 모두 `ProductionCore`와 같은 영속 repository를
+호출한다. Probe 전용 판단기나 별도 mock state는 없다. adapter는 operation을 core step으로 변환하고
+결과와 evidence를 공식 contract 형태로 전달하는 얇은 경계다.
 
-## 6. 기억 계약 — 권위·삭제·부활 차단
+`ProductionState`는 fact, field, session, permission, tombstone, action, outcome과 process epoch를 하나의
+versioned 문서로 저장한다. 쓰기는 임시 파일 뒤 atomic rename으로 완료한다. process 재시작 시 같은
+문서를 읽고 미완료 상태를 조정하므로 화면, action ledger와 export가 서로 다른 시점을 가리키지 않는다.
 
-- **userConfirmed 구분.** 사용자가 질문에 답해 정한 값과 그 외를 구분한다. 철회·다른 fact의
-  삭제는 전자를 보존하고, 같은 slot의 더 높은 authority는 언제나 값을 갱신한다.
-- **삭제와 tombstone.** 삭제된 값은 tombstone만 남기고, export·재실행·replay 뒤에도 부활하지
-  않는다. 리뷰를 지우면 그 리뷰가 만든 후보·scoped 취향(`derivedFactIds`로 연결)도 **정확히 그
-  descendant만** 함께 제거된다. 사용자가 별도로 재확인한 독립 취향은 남는다.
-- **commit identity.** 확정 draft 값들의 digest가 action의 identity다. 같은 draft에 반복 판단
-  요청이 와도 같은 action을 돌려주고 추가 commit이 없다 — 재시작·중복·순서변형에서 exactly-once.
-- **재고 event의 권위.** 품절은 취향이 아니라 이번 주문 선택과 같은 precedence의 더 높은
-  authority로 들어간다. 지나간 이벤트가 저장 취향을 오염시키지 않는다.
-- **평가 요청은 지연 outcome.** 주문 확정이 app-local 평가 요청을 예약하고, 도착은 ledger에
-  정확히 한 번 기록되며, TTL이 지나면 스스로 만료되어 이후 초안을 막지 않는다.
+각 주문 확정은 주문서 내용에서 만든 idempotency identity로 action ledger에 기록된다. 같은 요청의 반복,
+process 재시작 또는 duplicate event가 와도 이미 존재하는 action을 재사용하고 새로운 가상 주문을 만들지
+않는다. delayed outcome은 action에 연결된 별도 ledger 항목이며 도착 전에는 완료로 표시되지 않는다.
 
-## 7. 실패·중단 시 예상 state
+## 6. 안전, 현재성 및 실패 경계
 
-| 상황 | 예상 state |
+| 상황 | 제품 동작 |
 |---|---|
-| process 종료 → 재실행 | 디스크의 영속 state 문서에서 재조정. 대화·초안·확정 항목이 이어지고, 이미 commit된 draft는 다시 묻거나 중복 commit하지 않는다. 앱 안 "이 process 종료" 버튼이 실제 process kill로 이를 시연한다 |
-| network `DELAYED`/`UNKNOWN` | 열린 확인이 있으면 질문은 network 없이 가능하므로 `ASK` 우선. 확인이 없으면 `WAIT` — 초안은 그대로 |
-| network `OFFLINE` | 유효한 cache가 있으면 `WAIT`, 없으면 `ABSTAIN`. 미확인 commit 없음 |
-| 예산·희망시간 위반 | `ABSTAIN` — 조건을 만족하는 안이 없음을 정직하게 표시하고 멈춘다 |
-| 알림 권한 거부 | 평가 요청의 정본은 ledger, 표시는 in-app 배너. 알림은 그 정본을 비추는 부수 surface이므로 거부돼도 주문 기록·평가 요청·복구가 그대로 유지되고 알림만 뜨지 않는다 (§9 참조) |
-| 품절 event | 영향 항목만 `NEEDS_CONFIRMATION`으로 재개방, 총액 재계산, 다른 항목·기억 보존 |
+| 열린 확인이 있음 | network와 무관하게 사용자에게 필요한 값을 묻고 action을 시작하지 않는다 |
+| 합성 network가 DELAYED 또는 UNKNOWN | 확인이 끝났어도 최신 상태가 불명확하면 주문서를 보존한 채 기다린다 |
+| 합성 network가 OFFLINE | 유효한 cache가 없으면 중단하고, 미확인 action을 완료로 만들지 않는다 |
+| 예산·시간 조건을 만족할 후보가 없음 | 가능한 것처럼 대체하지 않고 조건을 만족할 수 없다고 표시한다 |
+| option 미제공·품절 | 영향을 받은 field만 다시 확인 대상으로 만들고 나머지는 보존한다 |
+| 알림 권한 거부 | 평가 요청은 in-app ledger와 배너에 남고 보조 알림만 생략된다 |
+| 실제 기기 network 단절 | 실제 연결 상태만 화면에 표시한다. 재현 가능한 합성 판단 state와 섞지 않는다 |
 
-## 8. CORE-1…6이 이 Mission에서 나타나는 위치
+`POST_NOTIFICATIONS`는 선택 권한이고 `ACCESS_NETWORK_STATE`는 표시 전용 normal 권한이다. `INTERNET`
+권한은 없으며 외부 endpoint도 없다. 따라서 실제 결제, 메시지, 계정 변경 또는 데이터 전송 경로가 없다.
 
-| CORE | 이 제품에서 | 검증 위치 (JVM) |
+## 7. Mobile lifecycle과 사용자 통제
+
+이 문제에서 모바일의 핵심은 작은 화면 자체가 아니라 **짧은 상호작용 사이의 중단과 재개**다. 사용자는
+주문을 구성하다가 앱을 떠나고, 평가 요청은 나중에 도착하며, 다음 주문에서 과거의 선택을 다시 만난다.
+앱은 이 lifecycle을 다음과 같이 제품 기능으로 다룬다.
+
+- 대화, 주문서와 memory를 입력 직후 app-local로 지속화한다.
+- 실제 process kill 뒤 같은 주문 화면과 미완료 질문을 복원한다.
+- 평가 요청의 정본을 알림이 아니라 ledger에 두어 권한 거부에도 상태를 보존한다.
+- 모바일 화면에서 기억의 출처, 범위, 자동 적용 여부를 확인하고 즉시 정정·철회·삭제할 수 있다.
+
+PC의 연속된 한 session만 가정하면 process death, 권한 거부, 지연 outcome과 재진입 사이의 정합성이
+핵심 설계에서 빠진다. 이 앱은 해당 경계를 별도 예외처리가 아니라 state transition의 일부로 구현한다.
+
+## 8. Full / claim-off comparison
+
+비교는 같은 APK, 같은 UI, 같은 parser, 같은 catalog와 같은 시작 snapshot을 사용한다. 두 arm의 storage,
+evidence와 실행 namespace는 완전히 분리된다.
+
+| 항목 | full | claim-off |
 |---|---|---|
-| CORE-1 선택적 맥락·distractor 배제 | 다른 식당·다른 메뉴 유형의 기록, 미승인 리뷰 후보, 만료된 조건은 초안에 서지 않는다 | `ScopedPreferenceTest`, `ChatIntakeTest`, `MetamorphicProbeTest` V2 |
-| CORE-2 현재 권위·정정·철회·삭제·descendant 무효화 | E3 정정·철회, 리뷰 삭제 시 파생 취향 동반 제거, 부활 차단 | `ReviewMemoryTest`, `ProbeOperationContractTest` |
-| CORE-3 반복부담 감소 + 필요한 안전확인 유지 | E2 자동 적용은 유효·허용 값만, 불확실은 질문 유지 | `ClaimOffComparisonTest`(VIL paired), `OptionAvailabilityTest` |
-| CORE-4 예외판단·부분복구 | E3 일회성 예외 항목만 재판단, E4 품절·미제공 옵션 부분 재개방 | `ProductFlowProbeTest`, `MultiLineDraftTest`, `MetamorphicProbeTest` line 단위 |
-| CORE-5 restart·duplicate·out-of-order·exactly-once | commit identity, 재시작 연속성, replay 무해 | `MetamorphicProbeTest` V3·V4, `MultiLineDraftTest` 재시작, `ProbeOperationContractTest` idempotency |
-| CORE-6 delayed outcome·ledger·evidence 일치 | 평가 요청 1회 도착·만료·응답 해소, 화면=state=receipt | `ReviewMemoryTest`, `ProbeOperationContractTest` digest chaining, `DemoScriptTranscriptTest` |
+| ASPR lifetime, scope, permission typing | 사용 | 사용하지 않음 |
+| dependency 기반 선택적 projection과 repair | 사용 | 사용하지 않음 |
+| 현재 session에서 말하지 않은 과거 값 | 유효하고 허용된 경우에만 자동 적용 | 자동 적용하지 않고 다시 확인 |
+| 삭제, tombstone, idempotency, restart, receipt | 동일 | 동일 |
+| 자연어 parser, 추천, 화면, catalog | 동일 | 동일 |
 
-## 9. 모바일 필요성과 PC counterfactual
+비교 지표는 **VIL, Valid Interaction Load**다. 동일한 유효 주문서를 만들기 전까지 사용자가 직접 해결한
+확인·입력 횟수를 센다. 두 arm 모두 안전하게 완료할 수 있어야 하며, 잘못된 entity 적용, 철회 무시,
+미제공 option 자동 대체 또는 중복 action은 부담 감소로 인정하지 않는다. 이 설계는 편의성의 차이를
+안전장치 약화와 분리해 ASPR의 인과 기여만 관찰하게 한다.
 
-배달 주문은 이동 중·짧은 시간에 휴대폰으로 이루어지고 전화·화면 잠금·앱 전환으로 쉽게 중단된다.
-이 제품의 mobile constraint는: **background에서 OS가 process를 종료하거나 알림 권한이 거부된
-경우에도, 중단 전 선택과 이후 변화를 올바르게 조정해 미완료 주문을 완료로 오인하거나 중복
-처리하지 않는 것.**
+## 9. CORE와 구현 근거
 
-- **process death 대응**은 §7의 재조정으로 성립하고, 실제 kill 버튼으로 시연 가능하다.
-- **알림 권한 조건**은 surface 분리로 성립한다: 평가 요청의 **정본은 ledger**이고 화면 표시는
-  in-app 배너다. `EvaluationNotification`은 그 정본을 **비추기만** 하며 요청을 만들거나 진행시키지
-  않는다(`sync`는 멱등). 따라서 `POST_NOTIFICATIONS`가 거부돼도 주문 기록·평가 요청·복구는 그대로
-  동작하고, 달라지는 것은 알림이 뜨느냐뿐이다. 화면이 허용/거부 상태를 그대로 표시하므로 심사관이
-  권한을 거부한 채 같은 흐름을 완주하는 대비 시연이 가능하다.
-- **PC counterfactual.** 일반 PC 대화 환경에는 Android lifecycle(임의 시점 process 종료)과 알림
-  권한의 경계가 없으므로 같은 복구 가치를 제공하거나 검증하기 어렵다. 이 제품의 가치 축인
-  "중단 뒤 부분 복구"는 모바일에서만 실재하는 제약 위에 있다.
+| CORE | 제품에서 관찰되는 성질 | 주요 source·test |
+|---|---|---|
+| CORE-1 선택적 맥락 | 다른 entity·goal, 만료 조건과 미승인 리뷰 후보를 배제 | `ScopedPreferenceTest`, `MetamorphicProbeTest` |
+| CORE-2 현재 권위 | 정정·철회·삭제 우선, descendant 제거와 no-resurrection | `ReviewMemoryTest`, `ProbeOperationContractTest` |
+| CORE-3 반복부담 감소 | 허용된 값만 자동 적용하고 불확실한 값의 확인은 유지 | `ClaimOffComparisonTest`, `OptionAvailabilityTest` |
+| CORE-4 예외와 부분복구 | one-off 예외, 미제공 option과 품절의 field 단위 재개방 | `ProductFlowProbeTest`, `MultiLineDraftTest` |
+| CORE-5 lifecycle | restart, duplicate, out-of-order와 exactly-once action | `MetamorphicProbeTest`, `ProbeOperationContractTest` |
+| CORE-6 evidence 무결성 | delayed outcome, ledger, receipt와 화면·export의 동일 state | `ReviewMemoryTest`, `ProbeParityTest` |
 
-## 10. 검증 경로 — Judge·OPS가 확인하는 곳
+공개 13-step fixture와 role-token 치환, entity-goal 교환, operation 순서 변형, 장기 반복 fixture는 동일
+production core를 실행한다. 전 식당과 재고가 있는 모든 메뉴 조합도 동일한 주문서 불변조건을 통과한다.
 
-- **공개 연습 (앱 안).** 메인 화면 하단 "평가·내보내기" → `ProbeConsoleActivity`. 공식 계약이
-  요구하는 세 컨트롤이 그 accessibility content description 그대로 붙어 있고 터치·키보드·
-  UIAutomator로 도달 가능하다: **공개 입력 불러오기**(시스템 파일 선택기) → **불러온 step 실행**
-  → **결과 내보내기**(`getExternalFilesDir`에 `PROBE_RESULT_<arm>.json`, 저장 위치를 화면에 표시).
-  import 실패는 실패로 표시되며 성공한 실행으로 꾸미지 않는다.
-- **production parity.** public UI와 protected component가 **같은 candidate adapter와 production
-  core**를 호출한다. 앱은 score·expected relation·anchor를 계산하지 않는다. 기기에서
-  `ProbeParityTest`(androidTest)가 이를 확인한다.
-- **비교 실행.** 메인 화면 "비교 실행 (full / claim-off)" → 같은 입력을 양 arm에 돌린 결과와
-  guardrail 위반 여부를 나란히 표시. arm 선택과 namespace 격리는 화면에서 확인 가능하다.
-- **evidence.** 모든 판단은 receipt·ledger로 남고 probe 화면의 "증거 파일" 목록과 export로
-  내보낼 수 있다. 화면이 보여주는 것과 state·receipt가 일치한다 (`DemoScriptTranscriptTest`가
-  화면 조립 함수 기준으로 이를 고정).
-- **기억의 사용자 통제.** "내 취향과 기억" 화면에서 저장 항목 전부를 출처·범위·자동 적용 여부와
-  함께 열람하고 범위별 철회·삭제할 수 있다 — 숨은 설정이 없다.
+## 10. Model과 runtime 경계
 
-## 11. model·backend·runtime freeze
+자연어 intake는 합성 catalog의 authored phrase를 longest-match 방식으로 해석하는 결정적 구현이다. 알 수
+없는 표현은 의미를 추측하거나 값을 저장하지 않고 사용자가 선택할 수 있는 항목을 보여준다.
 
-- **결정적 intake는 의도된 설계다** (공식 규칙 §8 "deterministic 구현도 허용" 명문). 자연어
-  해석은 catalog가 authoring한 어휘(슬롯 값 표현 143·메뉴 표현 31·리뷰 표현 21·모호 표현 6)에 대한
-  어절 단위 gapped 매칭이며, 해석 실패는 항상 `ASK`로 수렴해 설계된 안전 동작이 된다.
-- 선택 이유: ① 채점 경로(Probe)는 불투명 token만 보내므로 model이 기여할 자리가 없고, ② paired
-  comparison은 양 arm 동일 구성을 요구하며, ③ 재현성(같은 입력 → 모든 기기에서 같은 출력)·
-  오프라인 완주·APK 크기·라이선스 신고가 전부 단순해진다. 무거운 backend는 동결·가용성 부담만
-  늘린다.
-- **model 호출 0회.** `PreferenceIntake`가 model 구현 교체 지점으로 유지되지만
-  `modelConfigured=false`로 고정되어 inference가 없다. 따라서 판단당 4회·run당 60회 호출 상한과
-  retry 정책은 **계수 대상 자체가 0**이다. 원격 backend 없음 — 평가 기간에 가용성이 요구되는
-  참가자 관리 endpoint가 존재하지 않는다.
-- **runtime freeze.** 최종 서명 APK와 `SOURCE.zip`이 같은 release로 묶이며, 합성 catalog
-  snapshot digest가 비교 evidence에 기록되어 두 arm이 같은 데이터에서 출발했음을 보인다.
+- 온디바이스 model: 없음
+- 원격 backend와 endpoint: 없음
+- inference와 retry: 0회
+- runtime 데이터 전송: 없음
 
-### intake의 실패 경계 — 어디까지 이해하고, 못 하면 무엇을 하는가
-
-이 계층이 무엇을 **못 하는지** 먼저 밝힌다. `RuleBasedIntake`는 의미를 계산하지 않는다. catalog가
-authoring한 표현 목록에 대한 어절 단위 gapped 매칭과 금액·시간의 수치 파싱이 전부다. 부정(`맵지
-않게`)이 순한맛으로 읽히는 것도 논리 연산이 아니라 그 표현이 authoring되어 있기 때문이다.
-따라서 구문 분석·합성성·대명사 해소는 없고, 어휘 밖의 패러프레이즈는 원리적으로 읽지 못한다.
-
-이 경계를 감수할 수 있는 이유는 **실패가 안전한 방향으로만 수렴하도록 설계했기 때문**이다.
-
-1. 이해하지 못한 말은 값이 되지 않고 `unrecognised`로 남아 되묻는 문장이 된다. 추측 적용이 없다.
-2. 근접한 표현은 자동 적용이 아니라 **확인 질문**으로 제시된다.
-3. 초안에 메뉴가 없는 동안 화면은 **항상 후보를 제시한다.** 문장을 한 자도 이해하지 못해도
-   고를 것이 남아 있어 대화가 막다른 길이 되지 않는다.
-4. 모든 값은 주문서 카드의 `변경`에서 직접 고를 수 있다. 이해는 편의이지 전제가 아니다.
-
-즉 **제품의 정확성은 intake의 이해도에 의존하지 않는다.** 이해도가 올라가면 확인 횟수가 줄어들
-뿐이고, 기억 계약·부분복구·exactly-once는 어휘와 무관하게 성립한다.
-
-### 확장 경로 — 생성이 아니라 검색
-
-이해 폭을 넓히는 다음 단계는 대형 언어모델이 아니라 **온디바이스 문장 임베딩 검색**으로 설계했다.
-`PreferenceIntake` 뒤에 fallback으로 두고, 결정적 매칭이 실패한 구간만 authoring된 표현들과
-코사인 유사도로 비교해 **가장 가까운 하나를 확인 질문으로** 올린다. 생성이 아니라 검색이므로
-같은 입력에 같은 순위가 나오고, 임계값 미만이면 지금과 똑같이 `ASK`로 떨어진다 — 재현성·오프라인
-완주·안전 동작이 모두 보존된다.
-
-이번 릴리스에서 제외한 것은 구현 난이도가 아니라 **비용 대비 효과가 채점 경로에 없기 때문**이다.
-공식 Probe는 불투명 token만 보내므로 official run 중 inference는 0회이고, paired comparison은 양
-arm 동일 구성을 요구한다. 수십 MB의 런타임·모델을 싣는 대가로 채점 경로가 얻는 것이 없다면 그것은
-불필요한 복잡성이며 자원 trade-off에서도 불리하다. 이 판단은 온디바이스 LLM과 원격 backend를
-검토한 뒤 같은 근거로 내렸다.
-
-## 12. Claim → 검증 근거 매핑 (요약)
-
-JVM 170개(에뮬레이터 불필요) + 기기 검증. 대표 매핑:
-
-| 주장 | 근거 |
-|---|---|
-| core는 token 철자를 읽지 않는다 | `MetamorphicProbeTest` V1 전면치환 불변 |
-| 다른 entity·goal의 기록은 서지 않는다 | V2 entity/goal 교환 |
-| 순서변형·반복·중간 Reset에도 결과 불변 | V3 (18-step) |
-| 26-step 장기 연결 | V4 |
-| 전 식당 × 전 메뉴가 확정까지 완주한다 | `AllRestaurantCompletionTest` (6식당 × 재고 있는 모든 main 메뉴 + 식당별 전체 메뉴 장바구니) |
-| VIL paired 비교·guardrail 0 위반·arm 격리 | `ClaimOffComparisonTest` |
-| 리뷰 승인 전 무변경·범위별 저장·정확한 파생 삭제 | `ReviewMemoryTest` |
-| 항목 단위 품절 부분복구·단일 commit | `MultiLineDraftTest`, `ProductFlowProbeTest` |
-| 미제공 옵션 자동 대체 금지 | `OptionAvailabilityTest` |
-| 화면 문장에 내부 상수·원시 token 없음 | `DemoScriptTranscriptTest` |
-| 기기 parity·13-step 완주·V1–V4 변형 | 8/4 기기 검증 (`ProbeParityTest`, 공식 Runner) |
-
----
-
-*이 문서는 결과경계를 준수한다: 공식 hidden 값·expected relation·PASS/FAIL·점수 추정을 포함하지
-않으며, 여기 적힌 모든 검증은 공개 연습 범위의 자가 확인이다.*
+결정적 구현은 이 Mission의 좁고 합성된 주문 domain에서 판단 경계, 재현성, offline 동작과 paired
+comparison을 명확하게 만든다. 새로운 식당·메뉴·표현은 core 분기 추가가 아니라 catalog data로 확장된다.

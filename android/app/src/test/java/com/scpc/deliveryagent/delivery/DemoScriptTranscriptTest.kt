@@ -15,9 +15,8 @@ import org.junit.Test
 /**
  * Walks the demo script and renders what each screen would actually show.
  *
- * The emulator does not fit on the development laptop, so this is how the
- * product surface is reviewed before the device day. It composes every line with
- * the same functions `MainActivity` uses — `slotLabel`, `valueLabel`,
+ * It composes every line with the same functions `MainActivity` uses —
+ * `slotLabel`, `valueLabel`,
  * `provenanceLabel`, `DraftPricing`, `Recommender`, `reviewScopeChoices` — so the
  * transcript is what a person would read, not a paraphrase of it.
  *
@@ -25,7 +24,7 @@ import org.junit.Test
  * are open, which answers are offered for each, recommendation reasons, review
  * scope choices, and that the script never reaches a state with a question and no
  * way to answer it. What it cannot cover: layout, touch targets, scrolling and
- * Android lifecycle, which stay on the device checklist.
+ * Android lifecycle, which are covered by instrumentation and device checks.
  */
 class DemoScriptTranscriptTest {
 

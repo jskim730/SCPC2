@@ -1,0 +1,31 @@
+{
+  "actions": [
+    {
+      "actionId": "action.EVENT-PUBLIC-DECISION-01",
+      "idempotencyKey": "idem.6a836629445f55c60150b2c3",
+      "commitState": "COMMITTED",
+      "outcomeId": "outcome.commit.EVENT-PUBLIC-DECISION-01",
+      "originEventId": "EVENT-PUBLIC-DECISION-01",
+      "draftDigest": "6a836629445f55c60150b2c34df37b63d9fa2e1e02eaa77c760b2f4e668dabd8",
+      "seq": 6
+    }
+  ],
+  "duplicate_commits_prevented": 1,
+  "resolutions": [
+    {
+      "fieldId": "field.total",
+      "kind": "FINAL_CONFIRMATION",
+      "stepId": "PUBLIC-04",
+      "seq": 7
+    }
+  ],
+  "valid_interaction_load": 1,
+  "decision_requests": 1,
+  "model_invocations": 0,
+  "evidence_id": "ev.ledger.actions",
+  "step_ids": [
+    "PUBLIC-13"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "namespace": "full"
+}

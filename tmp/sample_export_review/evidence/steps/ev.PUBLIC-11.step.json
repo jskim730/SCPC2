@@ -1,0 +1,32 @@
+{
+  "evidence_id": "ev.PUBLIC-11.step",
+  "step_ids": [
+    "PUBLIC-11"
+  ],
+  "operation": "DELIVER_OUT_OF_ORDER",
+  "event_id": "EVENT-PUBLIC-OUT-OF-ORDER-01",
+  "session_id": "SESSION-C#3",
+  "session_label": "SESSION-C",
+  "virtual_time": "2026-01-01T00:10:00Z",
+  "network_state": "OFFLINE",
+  "decision_state": "ABSTAIN",
+  "aspr_enabled": true,
+  "namespace": "full",
+  "roles_seen": {
+    "CURRENT_AUTHORITY": "PUBLIC_AUTHORITY_V2",
+    "OLDER_EVENT_ID": "EVENT-PUBLIC-FACT-01"
+  },
+  "open_confirmation_ids": [],
+  "selected_context_ids": [
+    "fact.STABLE.slot.PUBLIC_SCOPE_KEEP"
+  ],
+  "excluded_context": {},
+  "draft": [],
+  "valid_interaction_load": 1,
+  "notes": {
+    "reason": "ALREADY_PROCESSED_EVENT_REDELIVERED",
+    "preserved_fact_ids": [
+      "fact.STABLE.slot.PUBLIC_SCOPE_KEEP"
+    ]
+  }
+}

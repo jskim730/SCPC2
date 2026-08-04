@@ -1,0 +1,75 @@
+{
+  "revoked_scope_ids": [
+    "scope.PUBLIC_SCOPE_REVOKE"
+  ],
+  "active_scope_ids": [
+    "scope.PUBLIC_SCOPE_KEEP"
+  ],
+  "draft": [
+    {
+      "fieldId": "field.PUBLIC_ENTITY_A.outcome",
+      "slotId": "slot.PUBLIC_ENTITY_A.outcome",
+      "value": "PUBLIC_DELAYED_OUTCOME_ARRIVED",
+      "status": "NEEDS_CONFIRMATION",
+      "priced": false,
+      "deps": [
+        {
+          "kind": "HARD_VALUE",
+          "ref": "fact.OUTCOME.slot.PUBLIC_ENTITY_A.outcome"
+        }
+      ],
+      "provenance": "DELAYED_OUTCOME_PROPOSAL",
+      "factId": "fact.OUTCOME.slot.PUBLIC_ENTITY_A.outcome",
+      "updatedSeq": 22,
+      "userConfirmed": false
+    },
+    {
+      "fieldId": "field.PUBLIC_SCOPE_KEEP",
+      "slotId": "slot.PUBLIC_SCOPE_KEEP",
+      "value": "PUBLIC_CORRECTED_GREEN",
+      "status": "AUTO_APPLIED",
+      "priced": true,
+      "deps": [
+        {
+          "kind": "HARD_VALUE",
+          "ref": "fact.STABLE.slot.PUBLIC_SCOPE_KEEP"
+        },
+        {
+          "kind": "PERMISSION",
+          "ref": "scope.PUBLIC_SCOPE_KEEP"
+        },
+        {
+          "kind": "CATALOG",
+          "ref": "catalog.PUBLIC_ENTITY_A.slot.PUBLIC_SCOPE_KEEP.v2"
+        }
+      ],
+      "provenance": "EXPLICIT_STABLE_AUTO_APPLIED",
+      "factId": "fact.STABLE.slot.PUBLIC_SCOPE_KEEP",
+      "updatedSeq": 9,
+      "userConfirmed": false
+    },
+    {
+      "fieldId": "field.total",
+      "slotId": "slot.total",
+      "value": "total.b7f1fed1c487ed64",
+      "status": "NEEDS_CONFIRMATION",
+      "priced": false,
+      "deps": [
+        {
+          "kind": "TOTAL",
+          "ref": "field.PUBLIC_SCOPE_KEEP"
+        }
+      ],
+      "provenance": "PRICED_LINE_ROLLUP",
+      "factId": null,
+      "updatedSeq": 9,
+      "userConfirmed": false
+    }
+  ],
+  "evidence_id": "ev.state.invalidation",
+  "step_ids": [
+    "PUBLIC-13"
+  ],
+  "run_id": "run.local-run-73d8eaec3a8b5c97",
+  "namespace": "full"
+}

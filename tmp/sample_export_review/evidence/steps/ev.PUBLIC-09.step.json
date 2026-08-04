@@ -1,0 +1,29 @@
+{
+  "evidence_id": "ev.PUBLIC-09.step",
+  "step_ids": [
+    "PUBLIC-09"
+  ],
+  "operation": "PROCESS_KILL_RELAUNCH",
+  "event_id": "EVENT-PUBLIC-KILL-01",
+  "session_id": "SESSION-C#3",
+  "session_label": "SESSION-C",
+  "virtual_time": "2026-01-01T00:08:00Z",
+  "network_state": "OFFLINE",
+  "decision_state": "NO_DECISION",
+  "aspr_enabled": true,
+  "namespace": "full",
+  "roles_seen": {},
+  "open_confirmation_ids": [],
+  "selected_context_ids": [
+    "fact.STABLE.slot.PUBLIC_SCOPE_KEEP"
+  ],
+  "excluded_context": {},
+  "draft": [],
+  "valid_interaction_load": 1,
+  "notes": {
+    "checkpoint_digest": "ae2d8735e170eb8397e8ba31404b5098d1e07d6169ac8d3621dac8c70bb3f6d4",
+    "open_confirmation_ids": [],
+    "uncommitted_draft": false,
+    "committed_action_count": 1
+  }
+}
