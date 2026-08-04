@@ -183,12 +183,32 @@ Copy-Item C:\Users\Infocar\SCPC2\release_v3\sample_app\scpc-probe-sample-0.1-loc
 `MISSION_LOCK.json`은 **없어도 된다.** 도구가 파일이 있을 때만 읽고, 없으면 공개 입력에 든
 `PUBLIC_REHEARSAL_AUTOMATIC` 값을 쓴다. 즉 Dacon 회신을 기다릴 필요가 없다.
 
+> **Windows에서는 공식 스크립트가 그대로 돌지 않는다 (2026-08-04 확인).**
+> `release_v3/public_harness/apk_release_info.py`가 SDK 도구를 **확장자 없는 이름**으로 찍는다
+> (`cmdline-tools/latest/bin/apkanalyzer`, `build-tools/35.0.0/apksigner`). 그 이름은 macOS·Linux에만
+> 있고 Windows SDK는 `.bat` 래퍼만 배포하며, CreateProcess는 확장자 없는 배치 파일을 거부한다
+> (`WinError 193`). 그래서 `Android SDK tools are missing`으로 멈춘다 — **SDK는 멀쩡히 설치돼 있는데도.**
+>
+> 위 0-4의 확인(`apkanalyzer -h`)은 shell이 PATHEXT로 `.bat`을 찾아주므로 **통과한다.** 초록불이
+> 이 문제를 가린다는 점에 주의한다.
+>
+> 우회는 `tools/win_fixture_shim.py`다. 공식 코드를 **수정하지 않고** import해서 실행하며, 확장자 없는
+> 실행 파일 경로만 `.bat` 형제로 바꾼다. 하네스 로직은 손대지 않고 `release_v3/`에도 쓰지 않는다.
+> 로컬 리허설에만 영향이 있고, 채점은 Dacon 하네스가 자기 기계에서 돌리므로 무관하다.
+
 ```powershell
 Set-Location C:\Users\Infocar\SCPC2\work
+..\.venv\Scripts\python.exe ..\tools\win_fixture_shim.py --public-input ..\release_v3\probe\PUBLIC_PROBE_INPUT_13_STEP.json --candidate-apk APP.apk --output-dir PUBLIC_RUN
+```
+
+인자는 공식 스크립트와 동일하다. macOS·Linux에서는 shim 없이 원본을 그대로 부르면 된다:
+
+```powershell
 ..\.venv\Scripts\python.exe ..\release_v3\public_harness\make_local_integration_fixture.py --public-input ..\release_v3\probe\PUBLIC_PROBE_INPUT_13_STEP.json --candidate-apk APP.apk --output-dir PUBLIC_RUN
 ```
 
-성공하면 `work\PUBLIC_RUN\`에 `PROBE_INPUT.json`과 `ASSIGNMENT.json`이 생긴다.
+성공하면 `work\PUBLIC_RUN\`에 `PROBE_INPUT.json`과 `ASSIGNMENT.json`이 생기고 run id가 출력된다.
+`runnerctl.py`는 이 도구들을 쓰지 않으므로 shim이 필요 없다.
 
 ```powershell
 Get-ChildItem PUBLIC_RUN

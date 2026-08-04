@@ -22,7 +22,13 @@ keystore.properties
 *.pem
 *.key
 
-# Generated rehearsal/runtime artifacts
+# Generated rehearsal/runtime artifacts.
+#
+# `work/` is scratch space for rehearsal runs and nothing in it belongs in the
+# repository: ASSIGNMENT.json carries a run_token_secret, and naming each output
+# directory individually meant a run written under any other name (a second
+# phase, a retry) silently became committable. Ignore the directory itself.
+work/
 work/APP.apk
 work/PUBLIC_RUN/
 work/SAMPLE_EXPORT/

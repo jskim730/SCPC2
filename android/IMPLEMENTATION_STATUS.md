@@ -11,10 +11,11 @@
 |---|---|
 | JVM 단위 테스트 | **159개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
+| `ProbeParityTest` (기기 instrumentation) | **7개 전부 통과** (2026-08-04, emulator). probe 진입점↔어댑터↔core 이음매 실기기 확인 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
 | 기기 실행 검증 | **API 35 x86_64 에뮬레이터 기본 흐름 확인.** debug APK 설치·첫 식당 선택·즉시 메뉴 추천 카드 표시 확인. 전체 E1–E4 육안 완주는 남음 |
 | 미구현·보류 항목 | 진짜 multi-select — 아래 전용 절 참조 (실제 network는 8/4 표시 전용으로 반영) |
-| 공식 Runner 13-step 완주 | **미실행.** release 서명 뒤 수행 |
+| 공식 Runner 13-step 완주 | **debug APK로 완주 (2026-08-04).** `run_status: COMPLETED`, `step_count: 13`, evidence 35건, `model_backend_frozen_id: NOT_USED`. release 서명 APK로 1회 더 수행해야 제출본이 된다 |
 | release 서명 설정 | **배선 완료·검증됨.** keystore 생성만 남음 (8/4 노트북에서 1회) |
 | 제출물 7종 | `APP.apk` 빌드 경로만 확보. 문서 4종·`SAMPLE_EXPORT`·영상 미착수 |
 | Mission 선언 제출 | **제출·Dacon 동결 완료.** 공식 정본은 루트 `MISSION_LOCK.json` (`candidate_025`, `mission_025`, 수정 금지) |
@@ -403,14 +404,25 @@ adb shell settings put global wifi_on 1
 adb shell settings put global mobile_data 1
 ```
 
-4. `./gradlew.bat :app:connectedDebugAndroidTest` — parity test 실행
+4. ~~`./gradlew.bat :app:connectedDebugAndroidTest` — parity test 실행~~ **완료 (2026-08-04, 개발
+   노트북).** Gradle과 emulator가 메모리를 다투지 않도록 `assembleDebugAndroidTest`로 먼저 APK를 만들고
+   `adb install` 뒤 `am instrument`로 직접 돌렸다. RAM이 빠듯한 기계에서는 이 순서가 확실하다:
+
+```bash
+adb shell am instrument -w -e class com.scpc.deliveryagent.probe.ProbeParityTest com.scpc.deliveryagent.test/androidx.test.runner.AndroidJUnitRunner
+```
 5. `installDebug` 후 `INSTALL_AND_USE_GUIDE` 3장의 문장을 그대로 입력해 E1→E4 완주.
    **이어서 §4의 기기 network 표시 확인** — 비행기 모드를 켜고 `메뉴 → network 상태`의 `기기` 값과
    상단 표시가 `끊김`으로 바뀌는지, 그동안 **합성 상태는 그대로**인지. 순수 매핑은 JVM으로 고정했지만
    `ConnectivityManager`를 실제로 읽는 부분은 기기에서만 확인된다
 6. 앱 안 `평가·내보내기`에서 `release_v3/probe/PUBLIC_PROBE_INPUT_13_STEP.json` import → run → export
 7. release 서명 APK를 `work/APP.apk`로 두고 `make_local_integration_fixture.py` →
-   `runnerctl.py run` → `PROBE_RESULT.json` 확인 (`SETUP_AND_REHEARSAL_RUNBOOK.md` Phase 1)
+   `runnerctl.py run` → `PROBE_RESULT.json` 확인 (`SETUP_AND_REHEARSAL_RUNBOOK.md` Phase 1).
+
+   **파이프라인 자체는 2026-08-04에 검증됐다.** 샘플 APK(Phase 1)와 **우리 debug APK**(Phase 2)로
+   각각 13-step을 완주했고 둘 다 `run_status: COMPLETED`였다. 즉 남은 것은 "서명된 APK로 한 번 더"
+   뿐이고, 하네스·어댑터·evidence 경로에서 새로 드러날 문제는 없다. **Windows에서는 `tools/`의 shim
+   두 개를 거쳐야 한다** — 런북 1-2 참조.
 8. V1–V4 변형 입력으로 반복 (`PROBE_METAMORPHIC_TEST_PLAN.md`)
 9. `FINALIZE_SAMPLE_EXPORT.py` → `VALIDATE_SAMPLE_EXPORT.py`
 10. `DEMO_VIDEO.mp4` 3분 이내
@@ -500,8 +512,15 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 
 ### 4. 기기에서만 가능한 검증 (위 "남은 작업 B" 전체)
 
-`connectedDebugAndroidTest`(ProbeParityTest), 공식 Runner 13-step 완주, V1–V4 변형, `SAMPLE_EXPORT`,
-데모 영상, release 서명 keystore 생성이 모두 미실행이다.
+공식 Runner 13-step 완주, V1–V4 변형, `SAMPLE_EXPORT`, 데모 영상, release 서명 keystore 생성이
+미실행이다.
+
+**`connectedDebugAndroidTest`(ProbeParityTest)는 2026-08-04 개발 노트북에서 통과했다 — 7개 전부, 5.2초.**
+`am instrument`로 직접 실행했다. parity는 UI를 조작하지 않는 on-device JUnit이라, 시스템 앱 ANR로
+탭이 먹지 않는 환경에서도 자기 프로세스에서 그대로 돈다. 이로써 `starter AAR → ProductionProbeAdapter →
+core` 이음매가 실기기에서 확인됐다: 보호된 진입점이 우리 어댑터를 찾고, 어댑터가 쓴 state를 제품 화면이
+읽으며, 두 arm이 격리되고, `MISSION_ADAPTER.json`의 operation 13개·role 10개가 전부 바인딩돼 있고,
+`model_backend_frozen_id = NOT_USED`가 기기에서 보고된다.
 
 개발 노트북(RAM 5.9 GB)에서 2026-08-04에 직접 측정한 결과 **에뮬레이터는 뜬다.** `scpc36`
 (android-36 google_apis x86_64, `hw.ramSize=1536`)이 140초에 부팅했고, debug APK 설치(11초)와 앱
@@ -590,5 +609,9 @@ Wellbeing과 System UI가 연달아 ANR을 냈으며 그 대화상자가 포커�
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
 | 2026-08-03 | 에뮬레이터에서 첫 식당 선택 뒤 추천 카드가 나오지 않던 결함 수정. `RESET_AND_START`가 이전 run을 비운 뒤 새 step의 목표·대상 context를 적용하도록 순서를 고치고, `startNewOrder`가 `TARGET_ENTITY`를 명시한다. reset 직후 context와 채팅 입력 전 추천 후보를 고정하는 회귀 테스트 2개 추가. debug·release JVM 각 152개 및 `assembleDebug` 통과 |
 | 2026-08-04 | **메뉴 이름을 타이핑하면 주문 항목이 담기지 않던 결함 수정.** `option.main`의 kind가 `menu_option`이라, 재사용 범위를 말하지 않은 문장(`마라탕으로 할게`)에서 파서가 메뉴에도 "이번 주문만 적용할까요, 기억할까요?" 질문을 붙였고 `say`가 그 값을 미해결로 보고 버려 `addLine` 분기에 도달하지 못했다. 메뉴 slot을 범위 질문 대상에서 제외(`NaturalLanguage.read`). `INSTALL_AND_USE_GUIDE` §3이 심사관에게 그대로 입력하라고 지시하는 E4 문장 2개가 이 경로였고, 기존 대본 테스트는 그 자리에서 `addLine(token)`을 직접 불러 파서를 우회했기 때문에 잡히지 않았다. 타이핑만으로 검증하는 `GuideScriptSentencesTest` 신설. debug·release JVM 각 154개 통과 |
+| 2026-08-04 | **공식 Runner 13-step을 debug APK로 완주.** 샘플 APK(Phase 1)·우리 APK(Phase 2) 모두 `run_status: COMPLETED`·`step_count: 13`. 우리 결과는 evidence 35건(샘플 26건)이고 결정 상태에 **`WAIT`와 `ABSTAIN`이 실제로 나타났다** — 샘플은 `ACT`·`CONFIRMED_COMPLETE`만 낸다. 공개 입력의 `SET_NETWORK OFFLINE` 주입에 설계대로 멈춘 것이 공식 파이프라인을 통과해 관측됐다. `model_backend_frozen_id: NOT_USED`·`cumulative_invocations: 0`도 공식 결과물에 기록됐다. 남은 것은 서명된 APK로 1회 반복 |
+| 2026-08-04 | **공식 Kit의 Windows 비호환 2건 발견·우회.** ① `apk_release_info.py`가 SDK 도구를 확장자 없는 이름으로 찍는데 Windows SDK는 `.bat`만 배포하고 CreateProcess가 이를 거부한다(`WinError 193`) → fixture 생성 자체가 시작 불가. ② `runnerctl.py`의 `collect()`가 디렉터리를 `fsync`하는데 Windows가 거부하고, 그 예외가 롤백 블록을 타 **방금 수집한 결과 파일을 전부 지운다** — 13 step은 실제로 다 돌았는데도 아무것도 안 남는다. `tools/win_fixture_shim.py`·`tools/win_runner_shim.py`가 공식 코드를 수정하지 않고 import해 프로세스 실행과 디렉터리 fsync만 교정한다. 런북 0-4의 `apkanalyzer -h` 확인은 shell이 PATHEXT로 해결하므로 통과해 이 문제를 가린다 |
+| 2026-08-04 | `work/`를 통째로 `.gitignore`에 넣었다. 출력 디렉터리를 이름마다 지정하던 방식은 다른 이름으로 쓴 run(2차 phase·재시도)이 조용히 커밋 대상이 되게 했고, `ASSIGNMENT.json`에는 `run_token_secret`이 들어 있다 |
+| 2026-08-04 | **`ProbeParityTest` 7개를 실기기(emulator)에서 통과.** 계획상 16 GB 노트북 몫(B-4)이었으나, parity가 UI를 조작하지 않는 on-device JUnit이라 시스템 앱 ANR로 탭이 안 먹는 환경에서도 `am instrument`로 실행됐다. 이로써 JVM만으로는 증명할 수 없던 `starter AAR → 어댑터 → core` 이음매가 확인됐다 — 채점자가 우리 core에 실제로 닿는다. Gradle과 emulator의 메모리 경합을 피하려면 APK를 먼저 빌드하고 `adb install` → `am instrument` 순서로 돈다 |
 | 2026-08-04 | **기기의 실제 network 연결을 표시 전용으로 반영.** `ui/DeviceLink.kt`가 render 시점에 `ConnectivityManager`를 읽어 `메뉴 → network 상태`에서 합성 값과 나란히 보여주고, 연결이 끊긴 동안에는 appBar에도 `기기 …`를 덧붙인다. 판단은 그대로 합성 상태만 읽으므로 `core/`·probe 계약·claim-off 비교가 무변경이다. `NetworkCallback` 대신 동기 읽기를 택해 lifecycle 해제 실수로 인한 크래시 경로를 만들지 않았고, 읽기 실패는 전부 `확인 불가`로 수렴한다. `ACCESS_NETWORK_STATE`(install-time) 추가. 순수 매핑 테스트 5개, `INSTALL_AND_USE_GUIDE` §4 갱신. debug·release JVM 각 159개 및 `assembleDebug` 통과 |
 | 2026-08-04 | 개발 노트북에서 에뮬레이터를 실제로 띄워 §4의 "뜨지 않는다" 서술을 측정값으로 교체. 부팅은 되지만 호스트 여유 RAM 0.27 GB에서 게스트 시스템 앱이 ANR을 내 사용 불가이고, 설치된 이미지가 런북 지정(`android-35;default`)과 다른 `android-36;google_apis`임을 확인. 기기 검증·release 빌드·데모 영상은 16 GB 노트북에서 수행하기로 결정. §5의 "제출물 4종 미착수"도 실제 상태(문서 3종 작성 완료)로 정정 |
