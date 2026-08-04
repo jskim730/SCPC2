@@ -1,0 +1,79 @@
+{
+  "schema_version": "3.0.0-draft",
+  "content_class": "PUBLIC_REHEARSAL_SELF_ASSESSMENT_NOT_OFFICIAL",
+  "notes": "2026-08-04. Anchors rest on five completed Runner-driven runs (work/PUBLIC_RUN, RUN_V1..V4, all run_status COMPLETED) plus 187 JVM tests on the current tree. The device runs used APK sha256 34f45f0e...; the current binary reproduces the baseline 13-step decision sequence exactly in OfficialPublicInputTest, but has not itself been through a Runner run. No anchor is claimed above 3 for that reason.",
+  "facts": [
+    {
+      "probe_id": "CORE-1",
+      "observed": "V1(role token permutation)은 baseline과 13단계 decision_state가 완전히 동일했다. 저장된 취향 중 현재 식당이 제공하지 않는 option은 draft field 자체를 만들지 않는다(lineOnlySlots).",
+      "expected_property": "wrong-goal/entity distractor invariance and minimal current context",
+      "difference": "V1·V2 변형은 참가자가 생성한 것이고, PUBLIC_REHEARSAL_CASES의 PRACTICE-B 표면은 아직 돌리지 않았다.",
+      "evidence_ids": [
+        "work/RUN_V1/PROBE_RESULT.json",
+        "work/RUN_V2/PROBE_RESULT.json",
+        "ProductFlowProbeTest#a draft carries only the options its own dishes have"
+      ],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-2",
+      "observed": "공개 입력의 CORRECT_FACT·REVOKE_SCOPE·DELETE_FACT(05·06·07)와 PROCESS_KILL_RELAUNCH(09) 뒤에도 삭제값이 부활하지 않았다. 일회성 지시는 저장 취향을 덮어쓰지 않고, 철회는 fact를 남긴 채 자동 적용만 무효화한다.",
+      "expected_property": "current authority and delete dominate stale state",
+      "difference": "권위 역전은 공개 입력과 JVM 테스트에서 확인했고, 기기에서의 재확인은 이전 binary 기준이다.",
+      "evidence_ids": [
+        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "ProductFlowProbeTest#E3 applies a one-off over a stored preference without changing it",
+        "ChatIntakeTest#a chat withdrawal keeps the stored value and asks again next order"
+      ],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-3",
+      "observed": "한 식당에서 '앞으로도' 없이 답한 값이 다음 주문의 다른 식당에서 AUTO_APPLIED로 채워지고, 그 식당이 제공하지 않는 option은 묻지도 채우지도 않는다. 최종 확인은 두 arm 모두 유지된다.",
+      "expected_property": "burden decreases without losing required safety",
+      "difference": "짝 비교 VIL 수치(full vs claim-off)는 아직 기기에서 측정하지 않았다. 저장 기본값을 오늘 바꿨으므로 이전 측정치는 무효다.",
+      "evidence_ids": [
+        "ChatIntakeTest#a value given without 앞으로도 still carries into the next order",
+        "ProductFlowProbeTest#E2 reuses the permitted options at a new restaurant and only asks about the new one",
+        "core/ClaimOffComparisonTest"
+      ],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-4",
+      "observed": "공개 입력에서 SET_NETWORK(08)가 WAIT, DELIVER_OUT_OF_ORDER(11)가 ABSTAIN으로 답했고 V4 26단계에서는 ASK가 두 번 나왔다. 품절은 해당 항목과 총액만 다시 열고 다른 항목은 보존한다.",
+      "expected_property": "change-point response and scoped recovery",
+      "difference": "네 상태(ONLINE/DELAYED/OFFLINE/UNKNOWN) 중 공개 입력이 밟는 경로만 Runner로 확인했고, 나머지는 앱 화면과 JVM 테스트로 확인했다.",
+      "evidence_ids": [
+        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "work/RUN_V4/PROBE_RESULT.json",
+        "core/ProbeOperationContractTest"
+      ],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-5",
+      "observed": "PROCESS_KILL_RELAUNCH(09) 직후의 REPLAY_EVENT(10)가 CONFIRMED_COMPLETE로 답해 같은 action을 두 번 기록하지 않았다. V3(order/repeat/reset) 18단계가 완주했다.",
+      "expected_property": "restart reconciliation and exactly-once outcome",
+      "difference": "kill·중복·순서뒤바뀜을 각각 확인했고, 세 가지를 한 run에서 겹쳐 넣은 경우는 V4 한 번뿐이다.",
+      "evidence_ids": [
+        "work/RUN_V3/PROBE_RESULT.json",
+        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "core/MetamorphicProbeTest"
+      ],
+      "anchor": 3
+    },
+    {
+      "probe_id": "CORE-6",
+      "observed": "ADVANCE_TIME(12) 뒤 지연 평가 요청이 도착하고, 리뷰에서 승인한 범위가 다음 주문의 다른 식당 초안 값을 바꿨다. result의 evidence_ids와 화면의 검증 정보가 같은 ledger를 가리킨다.",
+      "expected_property": "late outcome affects later decision with evidence integrity",
+      "difference": "지연 결과는 평가 요청 한 종류만 시험했다. export 산출물과 화면 표시의 대조는 사람이 한 번 더 확인해야 한다.",
+      "evidence_ids": [
+        "work/PUBLIC_RUN/PROBE_RESULT.json",
+        "ProductFlowProbeTest#a draft carries only the options its own dishes have",
+        "delivery/DemoScriptTranscriptTest"
+      ],
+      "anchor": 3
+    }
+  ]
+}
