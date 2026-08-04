@@ -88,6 +88,9 @@ class MainActivity : Activity() {
     private var reviewableActionId: String? = null
     private var lastSeenActionId: String? = null
 
+    /** The user asked for the restaurant list from the menu, mid-conversation. */
+    private var offeringNextOrder = false
+
     private var reviewRating: RatingValue? = null
     private var reviewOffers = listOf<ReviewCandidate>()
     private var reviewId: String? = null
@@ -132,6 +135,7 @@ class MainActivity : Activity() {
         firstStored = emptyList()
         scopeChanges = emptyList()
         reviewableActionId = null
+        offeringNextOrder = false
         editingFieldId = null
         reviewRating = null
         reviewOffers = emptyList()
@@ -479,7 +483,7 @@ class MainActivity : Activity() {
         renderFirstStored()
         renderNextQuestion(state)
         renderReview(state)
-        renderNextOrder(state)
+        renderNextOrder()
 
         barHost.removeAllViews()
         renderOrderBar(state)
@@ -1038,9 +1042,16 @@ class MainActivity : Activity() {
      * preference stated here first has to prove itself. Choosing the restaurant
      * opens a new session, so nothing said only for the last order carries into
      * this one.
+     *
+     * It belongs to the order this conversation just finished, and only to that.
+     * Keyed on "any order was ever recorded" it stayed pinned under every later
+     * message for the rest of the run — six restaurant chips permanently between
+     * the user and their own conversation, offering to start a next order in the
+     * middle of the one they were placing.
      */
-    private fun renderNextOrder(state: ProductionState) {
-        if (state.actions.isEmpty()) return
+    private fun renderNextOrder() {
+        val finished = reviewableActionId != null
+        if (!finished && !offeringNextOrder) return
         if (currentRestaurant() == null) return
         if (reviewOffers.isNotEmpty() || reviewNeedsTarget) return
         content.addView(
@@ -1057,6 +1068,17 @@ class MainActivity : Activity() {
                         chat += ChatLine("나:", "${restaurant.name}에서 새로 주문할게")
                         act { it.nextOrderSession(restaurant) }
                     }
+                } + if (finished) {
+                    emptyList()
+                } else {
+                    // Asked for from the menu in the middle of an order, so it has
+                    // to be dismissible without abandoning that order.
+                    listOf(
+                        Ui.Chip(label = "아니요, 계속할게요") {
+                            offeringNextOrder = false
+                            render()
+                        },
+                    )
                 },
             ),
         )
@@ -1239,10 +1261,12 @@ class MainActivity : Activity() {
             },
         )
         if (state.actions.isNotEmpty()) {
-            // The restaurant chips already stand at the end of the thread once an
-            // order is recorded, so this only carries the user down to them.
+            // The chips stand at the end of the thread on their own only when the
+            // order they belong to has just been recorded. Between orders this is
+            // the way back to them.
             body.addView(
-                Ui.menuItem(this, "다른 식당에서 새로 주문", "대화 끝의 식당 목록으로 이동합니다") {
+                Ui.menuItem(this, "다른 식당에서 새로 주문", "식당 목록을 대화 끝에 엽니다") {
+                    offeringNextOrder = true
                     closePanel()
                 },
             )
