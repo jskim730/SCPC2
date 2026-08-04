@@ -58,6 +58,41 @@ class AndroidStateStore(context: Context, private val namespace: String) : State
 }
 
 /**
+ * The conversation thread, kept across process death.
+ *
+ * The order, the draft, what is remembered and every ledger entry live in the
+ * core's own store. This is the screen's record of what was said — not a fact
+ * the engine reasons about, but the thing the person is actually looking at.
+ * Keeping the draft across a kill while the conversation that produced it
+ * vanished would leave the user staring at values with no account of where they
+ * came from, which is the opposite of the continuity this app promises.
+ *
+ * `commit()` for the same reason the state store uses it: `이 process 종료` kills
+ * the process outright, and an asynchronous write may never reach disk.
+ *
+ * One record per arm, so the two comparison arms never show each other's words.
+ */
+class ConversationStore(context: Context, arm: Arm) {
+
+    private val preferences = context.applicationContext
+        .getSharedPreferences("scpc-conversation-${arm.namespace}", Context.MODE_PRIVATE)
+
+    fun load(): String? = preferences.getString(KEY_THREAD, null)
+
+    fun save(encoded: String) {
+        preferences.edit().putString(KEY_THREAD, encoded).commit()
+    }
+
+    fun clear() {
+        preferences.edit().remove(KEY_THREAD).commit()
+    }
+
+    private companion object {
+        const val KEY_THREAD = "thread_json"
+    }
+}
+
+/**
  * Builds the production core used by every entry point.
  *
  * Product screens, the public Probe screen and the protected Probe callback all
@@ -127,6 +162,7 @@ object Production {
 
     fun resetAll(context: Context) {
         Arm.entries.forEach { AndroidStateStore(context, it.namespace).clear() }
+        Arm.entries.forEach { ConversationStore(context, it).clear() }
         Arm.entries.forEach { arm -> evidenceRoot(context, arm).deleteRecursively() }
     }
 

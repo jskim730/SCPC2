@@ -35,7 +35,11 @@ import com.scpc.deliveryagent.delivery.ValueScope
 import com.scpc.deliveryagent.delivery.provenanceLabel
 import com.scpc.deliveryagent.delivery.userLabel
 
+import com.scpc.deliveryagent.platform.Arm
+import com.scpc.deliveryagent.platform.ConversationStore
 import com.scpc.deliveryagent.platform.Production
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Today's order.
@@ -51,12 +55,7 @@ import com.scpc.deliveryagent.platform.Production
  */
 class MainActivity : Activity() {
 
-    /** One bubble, or — when [divider] — the seam between two order conversations. */
-    private data class ChatLine(
-        val speaker: String,
-        val text: String,
-        val divider: Boolean = false,
-    )
+    private data class ChatLine(val speaker: String, val text: String)
 
     private lateinit var content: LinearLayout
 
@@ -90,6 +89,10 @@ class MainActivity : Activity() {
 
     /** The user asked for the restaurant list from the menu, mid-conversation. */
     private var offeringNextOrder = false
+
+    /** Which arm's thread is currently in memory, and what was last written. */
+    private var loadedArm = Arm.FULL
+    private var persistedSignature = ""
 
     private var reviewRating: RatingValue? = null
     private var reviewOffers = listOf<ReviewCandidate>()
@@ -207,8 +210,69 @@ class MainActivity : Activity() {
             )
         }
         setContentView(root)
+        restoreConversation()
         render()
     }
+
+    /**
+     * The thread, written back whenever it changed.
+     *
+     * Only on change: the write is a synchronous commit, because `이 process 종료`
+     * kills the process and an asynchronous one may never land, and a redraw
+     * happens far more often than a new message does.
+     */
+    private fun persistConversation() {
+        val signature = "${chat.size}:$reviewableActionId:$lastSeenActionId"
+        if (signature == persistedSignature) return
+        persistedSignature = signature
+        val lines = JSONArray()
+        chat.takeLast(MAX_CHAT_LINES).forEach { line ->
+            lines.put(JSONObject().put("speaker", line.speaker).put("text", line.text))
+        }
+        ConversationStore(this, loadedArm).save(
+            JSONObject()
+                .put("lines", lines)
+                .put("reviewableActionId", reviewableActionId ?: JSONObject.NULL)
+                .put("lastSeenActionId", lastSeenActionId ?: JSONObject.NULL)
+                .toString(),
+        )
+    }
+
+    /**
+     * Reads the thread back, for a relaunch or a switch between arms.
+     *
+     * A malformed record is dropped rather than crashed on: the conversation is
+     * a convenience, and losing it must never cost the user the order.
+     */
+    private fun restoreConversation() {
+        loadedArm = Production.selectedArm(this)
+        chat.clear()
+        reviewableActionId = null
+        lastSeenActionId = null
+        persistedSignature = ""
+        val encoded = ConversationStore(this, loadedArm).load() ?: return
+        try {
+            val root = JSONObject(encoded)
+            val lines = root.optJSONArray("lines") ?: JSONArray()
+            (0 until lines.length()).forEach { index ->
+                val line = lines.getJSONObject(index)
+                chat += ChatLine(line.optString("speaker"), line.optString("text"))
+            }
+            reviewableActionId = root.optNullableString("reviewableActionId")
+            // Restored too, so a relaunch does not mistake the last recorded order
+            // for a new one and reopen a rating card the user already moved past.
+            lastSeenActionId = root.optNullableString("lastSeenActionId")
+            // What is on disk is what was just read, so the next redraw has nothing
+            // to write back.
+            persistedSignature = "${chat.size}:$reviewableActionId:$lastSeenActionId"
+        } catch (error: Exception) {
+            chat.clear()
+            persistedSignature = ""
+        }
+    }
+
+    private fun JSONObject.optNullableString(key: String): String? =
+        if (!has(key) || isNull(key)) null else getString(key)
 
     private fun appBar(): View = Ui.appBar(
         context = this,
@@ -247,6 +311,13 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // The stored thread is the authority on return, not what is in memory.
+        // Another screen may have switched arms — the two keep separate storage and
+        // separate evidence, so one arm's conversation over the other's state would
+        // be a false transcript — or reset everything, in which case a thread still
+        // held here would be written straight back out.
+        if (Production.selectedArm(this) != loadedArm) clearTransientScreenState()
+        restoreConversation()
         render()
     }
 
@@ -496,6 +567,7 @@ class MainActivity : Activity() {
             null -> Unit
         }
 
+        persistConversation()
         scrollToBottom()
     }
 
@@ -548,13 +620,6 @@ class MainActivity : Activity() {
     private fun renderConversation() {
         var previousSpeaker = ""
         chat.takeLast(MAX_CHAT_LINES).forEach { line ->
-            if (line.divider) {
-                content.addView(Ui.chatDivider(this, line.text))
-                // The next bubble opens a new conversation, so it is named again
-                // even when the same speaker closed the previous one.
-                previousSpeaker = ""
-                return@forEach
-            }
             content.addView(
                 Ui.chatLine(this, line.speaker, line.text, showName = line.speaker != previousSpeaker),
             )
@@ -1062,9 +1127,12 @@ class MainActivity : Activity() {
                 chips = catalog.restaurants.map { restaurant ->
                     Ui.Chip(label = restaurant.name) {
                         clearTransientScreenState()
-                        // The seam is visible, so what belongs to the finished
-                        // order and what belongs to this one never blur together.
-                        chat += ChatLine("", "${restaurant.name} · 새 주문", divider = true)
+                        // A new order is a new conversation. What was said about the
+                        // last meal has been answered for — it produced whatever the
+                        // user chose to keep, and that lives in 내 취향과 기억 and in
+                        // each draft row's provenance. Carrying its words forward
+                        // only buried the new conversation under the old one.
+                        chat.clear()
                         chat += ChatLine("나:", "${restaurant.name}에서 새로 주문할게")
                         act { it.nextOrderSession(restaurant) }
                     }
