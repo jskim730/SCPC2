@@ -193,28 +193,14 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
             }
         }
 
-        // A stored preference needs a stated reuse scope. Guessing it would be the
-        // one thing the mission says not to do.
+        // A sentence that says nothing about reuse is not an open question here.
         //
-        // The menu slot is exempt. It carries the item being ordered, never a
-        // preference to reuse, so asking whether to remember it is meaningless —
-        // and the question would leave the slot unresolved, dropping the order
-        // line the sentence just asked for.
-        if (scope == ValueScope.UNSTATED) {
-            values.filter {
-                catalog.slot(it.scopeToken).kind == SlotKind.MENU_OPTION &&
-                    it.scopeToken != Slots.MAIN
-            }
-                .forEach { value ->
-                    questions += OpenQuestion(
-                        about = value.scopeToken,
-                        question = "${catalog.slot(value.scopeToken).label} " +
-                            "'${catalog.valueLabel(value.valueToken)}'는 이번 주문만 적용할까요, " +
-                            "다음 주문에도 기억할까요?",
-                        matchedText = value.matchedText,
-                    )
-                }
-        }
+        // Reading language and deciding what to keep are different jobs, and only
+        // the second one knows what is already remembered for the slot — which is
+        // what makes the difference between a first answer worth keeping and a
+        // change worth asking about. `ProductSurface.say` holds that decision;
+        // this layer reports the scope the sentence actually stated and stops
+        // there. [ValueScope.UNSTATED] is a reading, not a refusal.
 
         return Utterance(
             text = utterance,

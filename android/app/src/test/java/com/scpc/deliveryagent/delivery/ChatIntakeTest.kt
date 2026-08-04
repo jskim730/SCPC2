@@ -143,12 +143,12 @@ class ChatIntakeTest {
     }
 
     @Test
-    fun `an unstated reuse scope becomes a question, not a stored preference`() {
+    fun `an unstated reuse scope is read as unstated, not turned into a question`() {
         val read = intake.read("맵지 않게 해줘", context(daon))
         assertEquals(ValueScope.UNSTATED, read.values.first().scope)
         assertTrue(
-            "the app has to ask whether to remember it",
-            read.questions.any { it.question.contains("이번 주문만") },
+            "reading the sentence is not the place that decides what to keep",
+            read.questions.isEmpty(),
         )
     }
 
@@ -243,22 +243,85 @@ class ChatIntakeTest {
     }
 
     @Test
-    fun `an unstated scope leaves the value out of the draft until answered`() {
+    fun `a first value with no stated scope is remembered and reported as remembered`() {
         val surface = surface()
         surface.startNewOrder(daon)
         val turn = surface.say(daon, "맵지 않게 해줘")
 
-        assertTrue(turn.applied.isEmpty())
-        assertTrue(turn.questions.any { it.contains("이번 주문만") })
-        assertNotEquals(
-            "nothing was stored from an unanswered question",
+        assertTrue(turn.applied.isNotEmpty())
+        assertEquals("spice.mild", surface.field(Slots.SPICINESS)?.value)
+        assertEquals(
+            "the screen is told so it can say what was kept and offer to narrow it",
+            listOf("spice.mild"),
+            turn.firstStored.map { it.valueToken },
+        )
+        assertTrue(
+            "a first answer is kept for later orders, not just this one",
+            surface.storedPreferencesFor(Slots.SPICINESS).any { it.value == "spice.mild" },
+        )
+    }
+
+    @Test
+    fun `a value contradicting a stored one is not written until its reach is stated`() {
+        val surface = surface()
+        surface.startNewOrder(daon)
+        surface.say(daon, "앞으로도 맵지 않게 해줘")
+
+        val turn = surface.say(daon, "아주 맵게 해줘")
+
+        assertTrue("nothing is applied while the reach is open", turn.applied.isEmpty())
+        assertEquals(
+            listOf("spice.very_hot"),
+            turn.scopeChanges.map { it.valueToken },
+        )
+        assertEquals(
+            "the stored preference is untouched until the user says otherwise",
+            "spice.mild",
+            surface.storedPreferencesFor(Slots.SPICINESS).single().value,
+        )
+
+        surface.rememberAtLevel(daon, catalog.slot(Slots.SPICINESS), "spice.very_hot", level = null)
+        assertEquals("spice.very_hot", surface.field(Slots.SPICINESS)?.value)
+        assertEquals(
+            "이번 주문만 leaves what is remembered exactly as it was",
+            "spice.mild",
+            surface.storedPreferencesFor(Slots.SPICINESS).single().value,
+        )
+    }
+
+    @Test
+    fun `a value given without 앞으로도 still carries into the next order`() {
+        // The point of storing a first answer: the second order is shorter without
+        // the user having had to know the phrase "앞으로도". If this stops holding,
+        // the default has stopped earning what it costs.
+        val surface = surface()
+        surface.startNewOrder(daon)
+        surface.say(daon, "맵지 않게 해줘")
+
+        surface.nextOrderSession(marahyang)
+
+        assertEquals(
+            "the remembered value fills the same option at another restaurant",
             "spice.mild",
             surface.field(Slots.SPICINESS)?.value,
         )
+        assertEquals(
+            FieldStatus.AUTO_APPLIED,
+            surface.field(Slots.SPICINESS)?.status,
+        )
+    }
 
-        val answered = surface.say(daon, "앞으로도 맵지 않게")
-        assertTrue(answered.applied.isNotEmpty())
-        assertEquals("spice.mild", surface.field(Slots.SPICINESS)?.value)
+    @Test
+    fun `a stated one-off never becomes a standing preference`() {
+        val surface = surface()
+        surface.startNewOrder(daon)
+        surface.say(daon, "이번 주문만 아주 맵게 해줘")
+
+        assertEquals("spice.very_hot", surface.field(Slots.SPICINESS)?.value)
+        assertTrue(
+            "saying 이번 주문만 is a decision, not a slot waiting to be filled",
+            surface.storedPreferencesFor(Slots.SPICINESS).isEmpty(),
+        )
     }
 
     @Test

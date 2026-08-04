@@ -214,6 +214,34 @@ class ProductSurface(
         val questions: List<String>,
         val recommendations: List<Recommender.Candidate>,
         val decision: StepOutcome?,
+        /**
+         * Values that were remembered for every later order because the slot held
+         * nothing yet. The screen names each one and offers to narrow it, so the
+         * storing is visible and one tap from being undone.
+         */
+        val firstStored: List<ReadValue> = emptyList(),
+        /**
+         * Values that contradict something already remembered. Nothing is stored
+         * for these: how far the change reaches is the user's to say.
+         */
+        val scopeChanges: List<ScopeChange> = emptyList(),
+    )
+
+    /**
+     * A value the user chose in place of one that is already remembered.
+     *
+     * This is the only moment where the reuse scope is a question worth asking.
+     * Before anything is stored the user cannot yet know whether they will want
+     * the value again, and asking then only teaches them to answer "이번 주문만" —
+     * which is precisely the answer that stops the app from ever learning. When
+     * they overrule a stored value they know exactly what they mean, so that is
+     * where the app asks.
+     */
+    data class ScopeChange(
+        val slot: SlotDefinition,
+        val valueToken: String,
+        /** The preference being overruled, narrowest of the ones stored for the slot. */
+        val stored: StoredPreference,
     )
 
     /**
@@ -232,6 +260,8 @@ class ProductSurface(
         val questions = utterance.questions.map { it.question }.toMutableList()
         val unresolved = utterance.questions.map { it.about }.toSet()
         val applied = mutableListOf<ReadValue>()
+        val firstStored = mutableListOf<ReadValue>()
+        val scopeChanges = mutableListOf<ScopeChange>()
 
         utterance.values.forEach { value ->
             // A slot the reading left open stays open.
@@ -282,18 +312,36 @@ class ProductSurface(
                             "${slot.label} 선택이 있는 메뉴를 담을까요?"
                         return@forEach
                     }
+                    val stored = storedPreferencesFor(slot.scopeToken)
+                    // A budget, a wanted time or a kind of food is what the user
+                    // wants *this* time. Keeping one as a standing preference would
+                    // silently apply an old budget to a later order, so a stated
+                    // condition never becomes stable however the sentence was scoped.
+                    val condition = slot.kind == SlotKind.USER_CONDITION
+                    val stable = when {
+                        condition -> false
+                        value.scope == ValueScope.REMEMBER_FOR_REUSE -> true
+                        value.scope == ValueScope.THIS_ORDER_ONLY -> false
+                        // Nothing is remembered for this option yet, so the value
+                        // the user just gave becomes the standing answer. The screen
+                        // says so and offers to narrow it.
+                        stored.isEmpty() -> true
+                        // It repeats what is already remembered: no change to make.
+                        stored.any { it.value == value.valueToken } -> false
+                        else -> {
+                            // It overrules something stored. How far the change
+                            // reaches is the user's to say, so nothing is written.
+                            scopeChanges += ScopeChange(slot, value.valueToken, stored.first())
+                            return@forEach
+                        }
+                    }
                     remember(
                         restaurant = restaurant,
                         slot = slot,
                         value = value.valueToken,
-                        // A budget, a wanted time or a kind of food is what the user
-                        // wants *this* time. Keeping one as a standing preference
-                        // would silently apply an old budget to a later order, so a
-                        // stated condition never becomes stable however the sentence
-                        // was scoped.
-                        stable = value.scope == ValueScope.REMEMBER_FOR_REUSE &&
-                            slot.kind != SlotKind.USER_CONDITION,
+                        stable = stable,
                     )
+                    if (stable && value.scope == ValueScope.UNSTATED) firstStored += value
                 }
             }
             applied += value
@@ -337,6 +385,8 @@ class ProductSurface(
                 emptyList()
             },
             decision = decision,
+            firstStored = firstStored,
+            scopeChanges = scopeChanges,
         )
     }
 
@@ -805,6 +855,111 @@ class ProductSurface(
                     autoApplyRevoked = fact.scopeIds.any { it in state.revokedScopes },
                 )
             }
+    }
+
+    /**
+     * The stable preferences stored for one option slot, narrowest scope first.
+     *
+     * The narrowest is the one that would actually fill a field, so it is also
+     * the one a contradicting value is overruling.
+     */
+    fun storedPreferencesFor(baseScopeToken: String): List<StoredPreference> =
+        storedPreferences()
+            .filter { it.baseSlot?.scopeToken == baseScopeToken }
+            .sortedByDescending { it.level.ordinal }
+
+    /** The menu of the one draft line carrying [slot], when exactly one does. */
+    private fun soleMenuFor(slot: SlotDefinition): String? =
+        state().draftLines
+            .filter { decl -> decl.slots.any { it.baseSlotId == slot.slotId } }
+            .singleOrNull()
+            ?.menuValueToken
+
+    /**
+     * Scope levels a value chosen for [slot] can honestly be saved at right now.
+     *
+     * The narrow levels are offered only when there is one menu to bind them to
+     * and the catalog author declared the slot reusable that way, so the app
+     * never offers a scope it could not keep.
+     */
+    fun scopeChoicesFor(
+        restaurant: RestaurantDefinition,
+        slot: SlotDefinition,
+    ): List<PreferenceScopeLevel> {
+        val levels = mutableListOf<PreferenceScopeLevel>()
+        val menuToken = soleMenuFor(slot)
+        val menu = menuToken?.let(catalog::value)
+        if (menu != null && restaurant.menu.any { it.token == menuToken } &&
+            slot.scopeToken in menu.lineOptionSlots
+        ) {
+            levels += PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE
+            val type = menu.menuType?.let(catalog::menuType)
+            if (type != null && slot.scopeToken in type.stableOptionSlots) {
+                levels += PreferenceScopeLevel.MENU_TYPE
+            }
+        }
+        levels += PreferenceScopeLevel.GLOBAL_DEFAULT
+        return levels
+    }
+
+    /**
+     * Stores a value at the scope the user named, over one already remembered.
+     *
+     * A null [level] means "이번 주문만": the stored preference is left exactly as
+     * it was and a one-off outranks it for this session only. Each wider level
+     * writes at that level alone, so saving an exception never disturbs the
+     * global default and vice versa.
+     */
+    fun rememberAtLevel(
+        restaurant: RestaurantDefinition,
+        slot: SlotDefinition,
+        value: String,
+        level: PreferenceScopeLevel?,
+    ): StepOutcome = when (level) {
+        null -> remember(restaurant, slot, value, stable = false)
+
+        PreferenceScopeLevel.GLOBAL_DEFAULT -> {
+            val global = storedPreferencesFor(slot.scopeToken)
+                .firstOrNull { it.level == PreferenceScopeLevel.GLOBAL_DEFAULT }
+            if (global == null) {
+                remember(restaurant, slot, value, stable = true)
+            } else {
+                // Replacing what is stored is a correction, not a second value:
+                // it carries higher authority so the old one cannot come back.
+                correctPreference(global.scopeToken, value)
+            }
+        }
+
+        PreferenceScopeLevel.MENU_TYPE -> {
+            val menu = soleMenuFor(slot)?.let(catalog::value)
+            val type = menu?.menuType
+            require(type != null) { "이 값은 메뉴 유형 범위로 저장할 수 없다" }
+            rememberForMenuType(restaurant, slot, value, type)
+        }
+
+        PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE -> {
+            val menuToken = soleMenuFor(slot)
+            require(menuToken != null) { "이 값은 이 식당·메뉴 범위로 저장할 수 없다" }
+            rememberForMenu(restaurant, slot, value, menuToken)
+        }
+    }
+
+    /**
+     * Narrows a preference just stored on first use back down to this order.
+     *
+     * The stored value is deleted rather than overridden, because the user is
+     * saying it should never have been standing; the tombstone keeps it from
+     * being revived, and the one-off carries the value through this order.
+     */
+    fun narrowToThisOrder(
+        restaurant: RestaurantDefinition,
+        slot: SlotDefinition,
+        value: String,
+    ): StepOutcome {
+        storedPreferencesFor(slot.scopeToken)
+            .filter { it.level == PreferenceScopeLevel.GLOBAL_DEFAULT }
+            .forEach { deletePreference(it.scopeToken) }
+        return remember(restaurant, slot, value, stable = false)
     }
 
     /** Adds a deletable one-time request note to the current draft. */

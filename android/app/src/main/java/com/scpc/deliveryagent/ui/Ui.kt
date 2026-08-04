@@ -1048,6 +1048,26 @@ object Ui {
             )
         }
 
+    /**
+     * The seam between two order conversations.
+     *
+     * It is centred and unattributed rather than a bubble, because nobody said
+     * it: it marks where one order ended and the next began, so the thread reads
+     * as a series of conversations instead of one that never stops growing.
+     */
+    fun chatDivider(context: Context, text: String): TextView = TextView(context).apply {
+        this.text = text
+        textSize = 12f
+        gravity = Gravity.CENTER
+        setTextColor(Color.parseColor("#4A5B54"))
+        setPadding(dp(context, 12), dp(context, 16), dp(context, 12), dp(context, 8))
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        contentDescription = text
+    }
+
     fun divider(context: Context): View = View(context).apply {
         setBackgroundColor(Color.LTGRAY)
         layoutParams = LinearLayout.LayoutParams(

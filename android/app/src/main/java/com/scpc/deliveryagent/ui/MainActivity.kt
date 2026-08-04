@@ -50,14 +50,27 @@ import com.scpc.deliveryagent.platform.Production
  */
 class MainActivity : Activity() {
 
-    private data class ChatLine(val speaker: String, val text: String)
+    /** One bubble, or — when [divider] — the seam between two order conversations. */
+    private data class ChatLine(
+        val speaker: String,
+        val text: String,
+        val divider: Boolean = false,
+    )
 
     private lateinit var content: LinearLayout
 
     private val chat = mutableListOf<ChatLine>()
     private var openQuestions = listOf<String>()
-    private var pendingScope = listOf<com.scpc.deliveryagent.delivery.ReadValue>()
     private var candidates = listOf<Recommender.Candidate>()
+
+    /** One option value remembered because its slot held nothing yet. */
+    private data class StoredOnFirstUse(val slot: SlotDefinition, val valueToken: String)
+
+    /** Just remembered for later orders, and still one tap from being narrowed. */
+    private var firstStored = listOf<StoredOnFirstUse>()
+
+    /** Chosen against something already remembered; waiting on how far it reaches. */
+    private var scopeChanges = listOf<ProductSurface.ScopeChange>()
 
     /** 식당·메뉴 proposed for sentences typed before an order exists. */
     private var discoveries = listOf<Recommender.Discovery>()
@@ -79,9 +92,6 @@ class MainActivity : Activity() {
     /** The draft row whose value chips are currently open, if any. */
     private var editingFieldId: String? = null
 
-    /** Set by the dialog-style actions so the reply scrolls into view. */
-    private var scrollChatIntoView = false
-    private var conversationAnchor: View? = null
     private lateinit var scroller: ScrollView
     private lateinit var root: FrameLayout
     private lateinit var panelHost: FrameLayout
@@ -107,7 +117,8 @@ class MainActivity : Activity() {
         discoveries = emptyList()
         exploreConditions = Recommender.Conditions.NONE
         exploreSentences.clear()
-        pendingScope = emptyList()
+        firstStored = emptyList()
+        scopeChanges = emptyList()
         editingFieldId = null
         reviewRating = null
         reviewOffers = emptyList()
@@ -234,7 +245,6 @@ class MainActivity : Activity() {
     // ----------------------------------------------------------------- chat
 
     private fun onSend(message: String) {
-        scrollChatIntoView = true
         chat += ChatLine("나:", message)
         val restaurant = currentRestaurant()
         if (restaurant == null) {
@@ -300,12 +310,17 @@ class MainActivity : Activity() {
             return
         }
 
+        val remembered = turn.firstStored.map { it.valueToken }.toSet()
         turn.applied.forEach { value ->
             val slot = catalog.slot(value.scopeToken)
-            val scope = when (value.scope) {
-                ValueScope.REMEMBER_FOR_REUSE -> "앞으로도 기억"
-                ValueScope.THIS_ORDER_ONLY -> "이번 주문만"
-                ValueScope.UNSTATED -> "이번 주문"
+            val scope = when {
+                value.scope == ValueScope.REMEMBER_FOR_REUSE -> "앞으로도 기억"
+                value.scope == ValueScope.THIS_ORDER_ONLY -> "이번 주문만"
+                // The sentence said nothing about reuse, and the app remembered it
+                // because the slot was empty. Saying which of the two happened is
+                // the whole point of the line.
+                value.valueToken in remembered -> "앞으로도 기억"
+                else -> "이번 주문"
             }
             chat += ChatLine(
                 "에이전트:",
@@ -322,74 +337,90 @@ class MainActivity : Activity() {
             chat += ChatLine("에이전트:", "무엇을 바꿔야 할지 알아듣지 못했습니다.")
         }
 
-        pendingScope = turn.utterance.values.filter { value ->
-            value.scope == ValueScope.UNSTATED &&
-                turn.utterance.questions.any { it.about == value.scopeToken }
+        firstStored = turn.firstStored.map {
+            StoredOnFirstUse(catalog.slot(it.scopeToken), it.valueToken)
         }
+        scopeChanges = turn.scopeChanges
         candidates = turn.recommendations
-    }
-
-    /** Answers the reuse-scope question for everything the last message left open. */
-    private fun answerScope(remember: Boolean) {
-        val restaurant = currentRestaurant() ?: return
-        scrollChatIntoView = true
-        val pending = pendingScope
-        pendingScope = emptyList()
-        chat += ChatLine("나:", if (remember) "앞으로도 기억해줘" else "이번 주문만")
-        // Only what actually stored is spoken about; a value gone stale since
-        // the question was asked becomes a message, not a crash or a claim.
-        pending.forEach { value ->
-            try {
-                surface.remember(
-                    restaurant = restaurant,
-                    slot = catalog.slot(value.scopeToken),
-                    value = value.valueToken,
-                    stable = remember,
-                )
-            } catch (error: Exception) {
-                chat += ChatLine("에이전트:", "처리하지 못했습니다: ${error.message}")
-                return@forEach
-            }
-            chat += ChatLine(
-                "에이전트:",
-                "${Particles.withObj(catalog.slot(value.scopeToken).label)} " +
-                    "${Particles.withInto(catalog.valueLabel(value.valueToken))} " +
-                    (if (remember) "저장하고 다음 주문에도 씁니다." else "이번 주문에만 적용합니다."),
-            )
-        }
-        render()
     }
 
     /** Answers one open question by tapping a value the current menu offers. */
     private fun answerField(field: DraftField, valueToken: String) {
         val restaurant = currentRestaurant() ?: return
         val parsed = LineTokens.parseSlotId(field.slotId)
-        val baseSlot = if (parsed == null) catalog.slotOfFieldSlotId(field.slotId) else null
-        if (parsed == null && baseSlot == null) return
-        scrollChatIntoView = true
+        val baseSlot = if (parsed == null) {
+            catalog.slotOfFieldSlotId(field.slotId)
+        } else {
+            catalog.slot(parsed.baseScopeToken)
+        }
+        if (baseSlot == null) return
+        // The undo card belongs to the value it was shown for. Answering the next
+        // question moves the conversation past it.
+        firstStored = emptyList()
         // The tap goes into the transcript before the redraw so the screen the
         // user sees next already carries what they just did.
         chat += ChatLine(
             "나:",
             "${catalog.slotLabel(field.slotId)}: ${catalog.valueLabel(valueToken)}",
         )
-        act {
-            when {
-                parsed != null && parsed.baseScopeToken == Slots.MAIN ->
-                    it.chooseLineMenu(restaurant, parsed.lineId, valueToken)
 
-                parsed != null && parsed.baseScopeToken == Slots.QUANTITY ->
-                    it.setQuantity(restaurant, parsed.lineId, valueToken)
+        // Which dish, and how many of it, are this order's own facts. They are
+        // never preferences, so they never raise a question of reuse.
+        if (parsed != null && parsed.baseScopeToken == Slots.MAIN) {
+            act { it.chooseLineMenu(restaurant, parsed.lineId, valueToken) }
+            return
+        }
+        if (parsed != null && parsed.baseScopeToken == Slots.QUANTITY) {
+            act { it.setQuantity(restaurant, parsed.lineId, valueToken) }
+            return
+        }
 
-                parsed != null ->
-                    it.setLineOption(
-                        restaurant,
-                        parsed.lineId,
-                        catalog.slot(parsed.baseScopeToken),
-                        valueToken,
-                    )
+        // With several dishes carrying the same option, answering for one of them
+        // says nothing about the others — so it stays that line's own value.
+        val carrying = surface.state().draftLines.count { decl ->
+            decl.slots.any { it.baseSlotId == baseSlot.slotId }
+        }
+        if (parsed != null && carrying > 1) {
+            act { it.setLineOption(restaurant, parsed.lineId, baseSlot, valueToken) }
+            return
+        }
 
-                else -> it.remember(restaurant, baseSlot!!, valueToken, stable = false)
+        storeChosenValue(restaurant, baseSlot, valueToken)
+    }
+
+    /**
+     * Stores a value the user chose for one option slot, at the layer the
+     * situation implies.
+     *
+     * Nothing remembered yet: the answer becomes the standing one and the app
+     * says so, because a first answer is the best evidence of what this person
+     * wants and asking "다음에도 쓸까요?" before there is anything to compare it
+     * with only teaches them to answer "이번 주문만". Same as what is remembered:
+     * nothing to store. Different from it: the app writes nothing until the user
+     * says how far the change reaches.
+     */
+    private fun storeChosenValue(
+        restaurant: RestaurantDefinition,
+        slot: SlotDefinition,
+        valueToken: String,
+    ) {
+        val stored = surface.storedPreferencesFor(slot.scopeToken)
+        when {
+            stored.isEmpty() -> {
+                firstStored = listOf(StoredOnFirstUse(slot, valueToken))
+                scopeChanges = emptyList()
+                act { it.remember(restaurant, slot, valueToken, stable = true) }
+            }
+
+            stored.any { it.value == valueToken } ->
+                act { it.remember(restaurant, slot, valueToken, stable = false) }
+
+            else -> {
+                scopeChanges = listOf(
+                    ProductSurface.ScopeChange(slot, valueToken, stored.first()),
+                )
+                firstStored = emptyList()
+                render()
             }
         }
     }
@@ -413,6 +444,7 @@ class MainActivity : Activity() {
         renderDiscoveries()
         renderRestaurantChoice()
         renderCandidates()
+        renderFirstStored()
         renderNextQuestion(state)
         renderReview(state)
         renderNextOrder(state)
@@ -428,9 +460,24 @@ class MainActivity : Activity() {
             null -> Unit
         }
 
-        if (scrollChatIntoView) {
-            scrollChatIntoView = false
-            scroller.post { scroller.fullScroll(View.FOCUS_DOWN) }
+        scrollToBottom()
+    }
+
+    /**
+     * The newest message is what the user is looking at.
+     *
+     * The thread is rebuilt from scratch on every redraw, and a ScrollView clamps
+     * its offset to zero while the rebuilt column still has no height — so without
+     * this every tap would land the user back at the oldest bubble and leave them
+     * hunting for what just happened. `scrollTo` rather than `fullScroll` because
+     * the latter also moves focus, which would take the caret out of the message
+     * field. The second pass catches cards whose chips wrap onto another line and
+     * therefore grow the column after the first one.
+     */
+    private fun scrollToBottom() {
+        scroller.post {
+            scroller.scrollTo(0, content.height)
+            scroller.post { scroller.scrollTo(0, content.height) }
         }
     }
 
@@ -463,6 +510,13 @@ class MainActivity : Activity() {
     private fun renderConversation() {
         var previousSpeaker = ""
         chat.takeLast(MAX_CHAT_LINES).forEach { line ->
+            if (line.divider) {
+                content.addView(Ui.chatDivider(this, line.text))
+                // The next bubble opens a new conversation, so it is named again
+                // even when the same speaker closed the previous one.
+                previousSpeaker = ""
+                return@forEach
+            }
             content.addView(
                 Ui.chatLine(this, line.speaker, line.text, showName = line.speaker != previousSpeaker),
             )
@@ -481,18 +535,25 @@ class MainActivity : Activity() {
     private fun renderNextQuestion(state: ProductionState) {
         val restaurant = currentRestaurant() ?: return
 
-        if (pendingScope.isNotEmpty()) {
-            val value = pendingScope.first()
+        // A change to something remembered is settled before anything else: the
+        // draft cannot honestly move on while it is unclear which value stands.
+        val change = scopeChanges.firstOrNull()
+        if (change != null) {
+            val levels = surface.scopeChoicesFor(restaurant, change.slot)
             content.addView(
                 Ui.agentCard(
                     context = this,
-                    question = "${Particles.withObj(catalog.slot(value.scopeToken).label)} 다음에도 쓸까요?",
-                    hint = catalog.valueLabel(value.valueToken) + " · 지금 정한 값입니다.",
+                    question = "${Particles.withObj(change.slot.label)} " +
+                        "${catalog.valueLabel(change.valueToken)}(으)로 바꿀게요. 어디까지 바꿀까요?",
+                    hint = "지금 기억하고 있는 값은 " +
+                        "${catalog.valueLabel(change.stored.value)}입니다 " +
+                        "(${storedScopeLabel(change.stored)}).",
                     chips = listOf(
-                        Ui.Chip(label = "이번 주문만") { answerScope(remember = false) },
-                        Ui.Chip(label = "앞으로도 기억") { answerScope(remember = true) },
-                    ),
-                    footnote = "기억하면 다음 주문의 같은 항목에 자동으로 채워집니다.",
+                        Ui.Chip(label = "이번 주문만") { applyScopeChange(change, null) },
+                    ) + levels.map { level ->
+                        Ui.Chip(label = changeLevelLabel(level)) { applyScopeChange(change, level) }
+                    },
+                    footnote = "고른 범위만 바뀌고, 나머지 범위의 기억은 그대로 둡니다.",
                 ),
             )
             return
@@ -524,8 +585,10 @@ class MainActivity : Activity() {
                 question = "${Particles.withObj(questionLabel(field))} 정해 주세요.",
                 hint = if (total == 1) "마지막 확인입니다." else "1 / $total · 하나씩 여쭤볼게요.",
                 chips = chips,
-                footnote = if (slot.kind == SlotKind.MENU_OPTION) {
-                    "이 선택은 이번 주문에 적용됩니다."
+                footnote = if (slot.kind == SlotKind.MENU_OPTION &&
+                    surface.storedPreferencesFor(slot.scopeToken).isEmpty()
+                ) {
+                    "고르신 값을 앞으로도 쓰겠습니다. 바로 아래에서 이번 주문만으로 바꿀 수 있습니다."
                 } else {
                     ""
                 },
@@ -536,6 +599,86 @@ class MainActivity : Activity() {
     /** The option's own name; the line it belongs to is already in the draft. */
     private fun questionLabel(field: DraftField): String =
         catalog.baseSlotOfLineSlotId(field.slotId)?.label ?: catalog.slotLabel(field.slotId)
+
+    /**
+     * What was just remembered, and the one tap that takes it back.
+     *
+     * Storing on first use is only honest if the user can see it happen and undo
+     * it without hunting for a settings screen, so the card sits in the thread at
+     * the moment it applies rather than being reported somewhere else later.
+     */
+    private fun renderFirstStored() {
+        val restaurant = currentRestaurant() ?: return
+        if (firstStored.isEmpty()) return
+        firstStored.forEach { stored ->
+            content.addView(
+                Ui.agentCard(
+                    context = this,
+                    question = "${Particles.withObj(stored.slot.label)} " +
+                        "${catalog.valueLabel(stored.valueToken)}(으)로 기억했습니다.",
+                    hint = "다음 주문부터 이 항목은 묻지 않고 이 값으로 채웁니다.",
+                    chips = listOf(
+                        Ui.Chip(label = "이번 주문만 할래요") {
+                            firstStored = firstStored - stored
+                            chat += ChatLine("나:", "${stored.slot.label}은 이번 주문만")
+                            chat += ChatLine(
+                                "에이전트:",
+                                "${Particles.withObj(stored.slot.label)} 기억에서 지우고 " +
+                                    "이번 주문에만 적용합니다.",
+                            )
+                            act {
+                                it.narrowToThisOrder(restaurant, stored.slot, stored.valueToken)
+                            }
+                        },
+                        Ui.Chip(label = "좋아요") {
+                            firstStored = firstStored - stored
+                            render()
+                        },
+                    ),
+                    footnote = "'내 취향과 기억'에서 언제든 고치거나 지울 수 있습니다.",
+                ),
+            )
+        }
+    }
+
+    /** Writes a change to a remembered value at the scope the user named. */
+    private fun applyScopeChange(
+        change: ProductSurface.ScopeChange,
+        level: PreferenceScopeLevel?,
+    ) {
+        val restaurant = currentRestaurant() ?: return
+        scopeChanges = scopeChanges - change
+        chat += ChatLine("나:", level?.let(::changeLevelLabel) ?: "이번 주문만")
+        chat += ChatLine(
+            "에이전트:",
+            "${Particles.withObj(change.slot.label)} " +
+                "${Particles.withInto(catalog.valueLabel(change.valueToken))} " +
+                if (level == null) {
+                    "이번 주문에만 적용합니다. 기억한 " +
+                        "${catalog.valueLabel(change.stored.value)}은(는) 그대로 둡니다."
+                } else {
+                    "${changeLevelLabel(level)} 범위로 바꿨습니다."
+                },
+        )
+        act { it.rememberAtLevel(restaurant, change.slot, change.valueToken, level) }
+    }
+
+    /** The same three scopes, named as the change they make. */
+    private fun changeLevelLabel(level: PreferenceScopeLevel): String = when (level) {
+        PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE -> "이 식당·이 메뉴만 앞으로도"
+        PreferenceScopeLevel.MENU_TYPE -> "같은 메뉴 유형이면 앞으로도"
+        PreferenceScopeLevel.GLOBAL_DEFAULT -> "항상 이걸로 바꾸기"
+    }
+
+    /** Where a stored preference currently reaches, in one phrase. */
+    private fun storedScopeLabel(stored: ProductSurface.StoredPreference): String =
+        when (stored.level) {
+            PreferenceScopeLevel.RESTAURANT_MENU_OVERRIDE ->
+                "이 식당·메뉴만: " + (stored.menuToken?.let(catalog::valueLabel) ?: "")
+            PreferenceScopeLevel.MENU_TYPE ->
+                "메뉴 유형: " + (stored.menuTypeToken?.let { catalog.menuType(it).label } ?: "")
+            PreferenceScopeLevel.GLOBAL_DEFAULT -> "모든 메뉴"
+        }
 
     /**
      * What the agent proposes right now.
@@ -601,7 +744,6 @@ class MainActivity : Activity() {
         exploreConditions = Recommender.Conditions.NONE
         exploreSentences.clear()
         chat += ChatLine("나:", "${restaurant.name} · ${discovery.candidate.label}")
-        scrollChatIntoView = true
         actQuiet { surface ->
             surface.startNewOrder(restaurant)
             sentences.forEach { sentence -> applySentence(restaurant, sentence) }
@@ -644,7 +786,6 @@ class MainActivity : Activity() {
                         {
                             chat += ChatLine("나:", "${candidate.label} 담기")
                             candidates = emptyList()
-                            scrollChatIntoView = true
                             act { it.addLine(restaurant, candidate.valueToken) }
                         }
                     } else {
@@ -687,35 +828,44 @@ class MainActivity : Activity() {
         val restaurant = currentRestaurant() ?: return
         if (state.actions.isEmpty()) return
 
-        if (surface.pendingEvaluationRequest()) {
+        // The rating card is a question, and a question that has been answered
+        // stops being asked. It appears when a request to rate the order has
+        // actually arrived, and it leaves as soon as the review is in — what was
+        // written afterwards lives in 내 취향과 기억, not in the middle of the
+        // thread where it pushed the next order off the screen.
+        val requested = surface.pendingEvaluationRequest()
+        val settlingReview = reviewNeedsTarget || reviewOffers.isNotEmpty()
+        if (!requested && !settlingReview) return
+
+        if (requested) {
             content.addView(
                 Ui.chatLine(this, "에이전트:", "식사는 어떠셨어요? 별점과 한 줄 평가를 남겨 주세요."),
             )
-        }
-
-        val rated = reviewRating
-        content.addView(
-            Ui.agentCard(
-                context = this,
-                question = "지난 주문 평가",
-                hint = restaurant.name + (reviewTargetToken?.let { " · " + catalog.valueLabel(it) } ?: ""),
-                chips = surface.ratingOptions().map { rating ->
-                    Ui.Chip(label = rating.label, selected = rated?.token == rating.token) {
-                        reviewRating = rating
-                        render()
-                    }
+            val rated = reviewRating
+            content.addView(
+                Ui.agentCard(
+                    context = this,
+                    question = "지난 주문 평가",
+                    hint = restaurant.name +
+                        (reviewTargetToken?.let { " · " + catalog.valueLabel(it) } ?: ""),
+                    chips = surface.ratingOptions().map { rating ->
+                        Ui.Chip(label = rating.label, selected = rated?.token == rating.token) {
+                            reviewRating = rating
+                            render()
+                        }
+                    },
+                ).also { card ->
+                    card.addView(
+                        Ui.inputRow(
+                            context = this,
+                            hint = "예: 국물은 괜찮았는데 간이 좀 셌어",
+                            sendLabel = "남기기",
+                            onSend = { text -> onReview(restaurant, text) },
+                        ),
+                    )
                 },
-            ).also { card ->
-                card.addView(
-                    Ui.inputRow(
-                        context = this,
-                        hint = "예: 국물은 괜찮았는데 간이 좀 셌어",
-                        sendLabel = "남기기",
-                        onSend = { text -> onReview(restaurant, text) },
-                    ),
-                )
-            },
-        )
+            )
+        }
 
         if (reviewNeedsTarget) {
             val id = reviewId
@@ -768,37 +918,6 @@ class MainActivity : Activity() {
             }
         }
 
-        if (state.reviews.isNotEmpty()) {
-            content.addView(Ui.body(this, "남긴 평가"))
-            state.reviews.forEach { record ->
-                val rating = catalog.rating(record.ratingToken)?.label ?: "평점 없음"
-                val learned = if (record.derivedValueTokens.isEmpty()) {
-                    "참고 항목 없음"
-                } else {
-                    "참고: " + record.derivedValueTokens.joinToString { catalog.valueLabel(it) }
-                }
-                content.addView(Ui.row(this, rating, record.text, learned))
-                content.addView(
-                    Ui.button(this, "이 평가와 참고 내용 삭제") {
-                        try {
-                            surface.deleteReview(record.reviewId)
-                            if (reviewId == record.reviewId) {
-                                reviewId = null
-                                reviewOffers = emptyList()
-                            }
-                            chat += ChatLine("에이전트:", "평가와 그 평가로 배운 내용을 지웠습니다.")
-                        } catch (error: Exception) {
-                            Toast.makeText(
-                                this,
-                                "처리하지 못했습니다: ${error.message}",
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                        render()
-                    },
-                )
-            }
-        }
     }
 
     private fun onReview(restaurant: RestaurantDefinition, text: String) {
@@ -812,6 +931,9 @@ class MainActivity : Activity() {
         reviewOffers = turn.offers
         reviewNeedsTarget = turn.needsTarget
         reviewTargetToken = turn.targetMenuToken
+        // The rating belonged to the review that was just filed. Keeping it
+        // selected would make the next request look half answered already.
+        reviewRating = null
         chat += ChatLine("나:", text)
         turn.notes.forEach { chat += ChatLine("에이전트:", it) }
         chat += ChatLine(
@@ -879,8 +1001,10 @@ class MainActivity : Activity() {
                 chips = catalog.restaurants.map { restaurant ->
                     Ui.Chip(label = restaurant.name) {
                         clearTransientScreenState()
+                        // The seam is visible, so what belongs to the finished
+                        // order and what belongs to this one never blur together.
+                        chat += ChatLine("", "${restaurant.name} · 새 주문", divider = true)
                         chat += ChatLine("나:", "${restaurant.name}에서 새로 주문할게")
-                        scrollChatIntoView = true
                         act { it.nextOrderSession(restaurant) }
                     }
                 },
@@ -1045,7 +1169,6 @@ class MainActivity : Activity() {
                     enabled = openQuestions.isEmpty() && restaurant != null,
                 ) {
                     closePanel()
-                    scrollChatIntoView = true
                     restaurant?.let { r -> act { it.requestDecision(r) } }
                 },
             )
@@ -1070,7 +1193,6 @@ class MainActivity : Activity() {
             // order is recorded, so this only carries the user down to them.
             body.addView(
                 Ui.menuItem(this, "다른 식당에서 새로 주문", "대화 끝의 식당 목록으로 이동합니다") {
-                    scrollChatIntoView = true
                     closePanel()
                 },
             )
