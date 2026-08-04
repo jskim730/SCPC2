@@ -195,8 +195,16 @@ class RuleBasedIntake(private val catalog: SyntheticCatalog) : PreferenceIntake 
 
         // A stored preference needs a stated reuse scope. Guessing it would be the
         // one thing the mission says not to do.
+        //
+        // The menu slot is exempt. It carries the item being ordered, never a
+        // preference to reuse, so asking whether to remember it is meaningless —
+        // and the question would leave the slot unresolved, dropping the order
+        // line the sentence just asked for.
         if (scope == ValueScope.UNSTATED) {
-            values.filter { catalog.slot(it.scopeToken).kind == SlotKind.MENU_OPTION }
+            values.filter {
+                catalog.slot(it.scopeToken).kind == SlotKind.MENU_OPTION &&
+                    it.scopeToken != Slots.MAIN
+            }
                 .forEach { value ->
                     questions += OpenQuestion(
                         about = value.scopeToken,

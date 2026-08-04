@@ -9,11 +9,11 @@
 
 | 항목 | 상태 |
 |---|---|
-| JVM 단위 테스트 | **152개 전부 통과** (debug·release 각각, emulator 불필요) |
+| JVM 단위 테스트 | **159개 전부 통과** (debug·release 각각, emulator 불필요) |
 | `assembleDebug` / `assembleDebugAndroidTest` | 통과 |
 | 제출 Mission 범위 구현 (다중 항목·3-scope 취향·리뷰 승인·평점 랭킹) | **완료.** JVM으로 검증, 기기 육안 확인만 남음 |
 | 기기 실행 검증 | **API 35 x86_64 에뮬레이터 기본 흐름 확인.** debug APK 설치·첫 식당 선택·즉시 메뉴 추천 카드 표시 확인. 전체 E1–E4 육안 완주는 남음 |
-| 미구현·보류 항목 | 실제 network 감지, 진짜 multi-select — 아래 전용 절 참조 |
+| 미구현·보류 항목 | 진짜 multi-select — 아래 전용 절 참조 (실제 network는 8/4 표시 전용으로 반영) |
 | 공식 Runner 13-step 완주 | **미실행.** release 서명 뒤 수행 |
 | release 서명 설정 | **배선 완료·검증됨.** keystore 생성만 남음 (8/4 노트북에서 1회) |
 | 제출물 7종 | `APP.apk` 빌드 경로만 확보. 문서 4종·`SAMPLE_EXPORT`·영상 미착수 |
@@ -311,22 +311,24 @@ slot을 제공할 때만 식당을 넘는다.
 품절·가격변경은 코드 분기가 아니라 `catalog_events`다. `ProductSurface.applyCatalogEvent`가 그 slot
 하나에만 더 높은 authority로 전달하므로 본 메뉴와 독립 option은 보존된다.
 
-## 검증 — JVM 152개, emulator 불필요
+## 검증 — JVM 159개, emulator 불필요
 
 | 파일 | 개수 | 내용 |
 |---|---:|---|
-| `core/ProbeOperationContractTest.kt` | 28 | step 1:1 대응, digest chaining, epoch, 만료, 철회, 정정, 삭제, 부활 차단, idempotency, replay, network, 복구 필요, verdict 어휘 부재 |
+| `core/ProbeOperationContractTest.kt` | 29 | step 1:1 대응, digest chaining, epoch, 만료, 철회, 정정, 삭제, 부활 차단, idempotency, replay, network, 복구 필요, verdict 어휘 부재, reset 직후 goal·target 확립 |
 | `core/MetamorphicProbeTest.kt` | 10 | V1 token 전면치환 불변, V2 entity/goal 교환, V3 순서변형·반복·중간 Reset, V4 26-step 장기 연결, line 단위 부분 무효화 |
 | `core/ClaimOffComparisonTest.kt` | 6 | VIL paired 비교, guardrail 0 위반, arm state 완전 격리 |
 | `delivery/SyntheticCatalogTest.kt` | 10 | shipped asset byte로 불변조건 검사, menu type·line slot authoring, digest 결정성, 개인정보 유사 label 부재, 잘못된 catalog 거부 |
-| `delivery/ProductFlowProbeTest.kt` | 7 | 제품 기준 E1–E4 완주, 가격·예상시간, 항목 단위 품절 부분복구, 예산 초과 `ABSTAIN`, 재시작 연속성 |
+| `delivery/ProductFlowProbeTest.kt` | 8 | 제품 기준 E1–E4 완주, 가격·예상시간, 항목 단위 품절 부분복구, 예산 초과 `ABSTAIN`, 재시작 연속성, 첫 식당 선택 즉시 추천 후보 |
 | `delivery/ChatIntakeTest.kt` | 19 | 금액 4형태(프리셋 밖 금액 포함)·기간·부정 표현, 모호 표현 질문화, 미제공 option 질문화, 철회 의도 분리, 추천 순위·근거, 순위 결정성, **조건 발화 자체가 후보 요청** |
 | `delivery/MultiLineDraftTest.kt` | 10 | 두 메뉴 두 line, 같은 메뉴 옵션 분리, line 지시 우선, 수량·총액, 항목 제거·부활 차단, line ID 불재사용, 단일 commit, 항목 단위 품절, product step digest 연속성 |
 | `delivery/ScopedPreferenceTest.kt` | 9 | override > 유형 > 전역 우선순위, authored type만 식당 간 전달, stable slot 제한, 범위별 철회·삭제·정정 독립, 범위 표시 |
 | `delivery/ReviewMemoryTest.kt` | 20 | 리뷰 읽기, 동의 전 무변경, 범위 선택지 제한, scoped 승격·같은 쌍만 적용·유형 전달, review version 소유권, 최신 직접 지시·정정 보존, 독립 outcome 격리, 평가 요청 원자적 예약·도착·만료·응답 해소, 다중 항목 대상 확정 |
 | `delivery/RatingDisplayTest.kt` | 12 | 평균·척도·건수, 식당 경계, 조건·취향 우선 유지, 동순위 tie-break 양 arm 동일, "내 평점" 근거 badge, count 감쇠, 차단 없음, 삭제 반영 |
 | `delivery/DemoScriptTranscriptTest.kt` | 1 | **화면 검토용.** E1–E4 대본을 실제 화면 조립 함수로 걸어 각 단계 화면을 출력하고, 답할 수 없는 질문·원시 token·내부 상수 노출·중복 행이 없음을 확인 |
+| `delivery/GuideScriptSentencesTest.kt` | 2 | **설치가이드 §3이 심사관에게 그대로 입력하라고 지시하는 문장**을 타이핑만으로 검증. 메뉴 이름으로 주문, 한 문장이 담은 항목 추가와 요청 메모를 함께 적용. 대본 테스트가 같은 자리에서 `addLine(token)`으로 파서를 우회하던 사각을 덮는다 |
 | `delivery/OptionAvailabilityTest.kt` | 10 | 식당별 옵션 가짓수, 미제공 값 ASK·임의 대체 금지·취향 보존, 유료 추가의 항목·수량·예산 반영, 마라/국물/떡볶이 유형의 식당 간 전달 |
+| `ui/DeviceLinkTest.kt` | 5 | 기기 실제 연결의 **표시 전용** 매핑 — 활성 network 없음→끊김, 인터넷 capability 없음→연결됐지만 인터넷 없음, 연결됨 판정, 라벨이 내부 상수를 노출하지 않음. Android 타입을 쓰지 않는 순수 함수로 분리해 emulator 없이 고정 |
 | `delivery/ParticlesTest.kt` | 6 | 조사 선택 규칙(을/를·으로/로·이/가), ㄹ받침 예외, 숫자·영문 끝 라벨 |
 | `delivery/AllRestaurantCompletionTest.kt` | 2 | 6개 식당의 재고 있는 모든 main menu를 새 run에서 선택하고, 제공 가능한 값으로 필수 질문을 해소해 정확히 한 번 `ACT` 되는지 전수검사. 식당별 **전체 메뉴(사이드 포함)를 한 주문에** 담은 장바구니 경로도 같은 방식으로 완주 검사 |
 
@@ -402,7 +404,10 @@ adb shell settings put global mobile_data 1
 ```
 
 4. `./gradlew.bat :app:connectedDebugAndroidTest` — parity test 실행
-5. `installDebug` 후 `INSTALL_AND_USE_GUIDE` 3장의 문장을 그대로 입력해 E1→E4 완주
+5. `installDebug` 후 `INSTALL_AND_USE_GUIDE` 3장의 문장을 그대로 입력해 E1→E4 완주.
+   **이어서 §4의 기기 network 표시 확인** — 비행기 모드를 켜고 `메뉴 → network 상태`의 `기기` 값과
+   상단 표시가 `끊김`으로 바뀌는지, 그동안 **합성 상태는 그대로**인지. 순수 매핑은 JVM으로 고정했지만
+   `ConnectivityManager`를 실제로 읽는 부분은 기기에서만 확인된다
 6. 앱 안 `평가·내보내기`에서 `release_v3/probe/PUBLIC_PROBE_INPUT_13_STEP.json` import → run → export
 7. release 서명 APK를 `work/APP.apk`로 두고 `make_local_integration_fixture.py` →
    `runnerctl.py run` → `PROBE_RESULT.json` 확인 (`SETUP_AND_REHEARSAL_RUNBOOK.md` Phase 1)
@@ -448,19 +453,25 @@ Probe 경로에는 자연어가 들어오지 않는다. official 채점은 불�
 2026-07-31 기준으로 **의도적으로 넣지 않았거나 아직 확인하지 못한 것**을 근거와 함께 남긴다.
 "안 했다"와 "안 하기로 했다"를 구분하는 것이 목적이다.
 
-### 1. 실제 기기 network 감지 없음 — 합성 `SET_NETWORK`만
+### 1. 실제 기기 network — 표시 전용으로 반영 (2026-08-04)
 
-`ConnectivityManager` 사용처가 0건이다. network 상태는 오직 probe operation과 제품 화면의 네 버튼으로만
-바뀐다.
+판단은 그대로 합성 상태만 읽는다. 기기의 실제 연결은 `ui/DeviceLink.kt`가 render 시점에 읽어
+**표시 전용**으로만 보여준다: `메뉴 → network 상태`에서 합성 값과 나란히, 그리고 실제 연결이 끊긴
+동안에는 상단 appBar에도 `기기 …`가 함께 뜬다.
 
-- **정당한 부분:** 공식 채점은 `SET_NETWORK` operation으로 상태를 주입하므로 Q/80 경로에는 영향이 없다.
-  합성 환경 원칙(§9)에도 맞는다.
-- **위험:** 심사관이 기기에서 비행기 모드를 켜도 앱은 `ONLINE`을 표시한다. "network 차단에 대응한다"고
-  읽은 사람에게는 미대응으로 보인다.
-- **추후 방향:** `ConnectivityManager.NetworkCallback`으로 실제 상태를 읽어 **합성 상태와 별개의 표시
-  줄**로 보여주고, 판단에는 기존대로 합성 상태만 쓴다. 판단 경로를 건드리지 않으므로 probe 계약과
-  claim-off 비교가 영향을 받지 않는다. 넣지 않기로 한다면 기술노트와
-  `INSTALL_AND_USE_GUIDE`에 "network 상태는 앱 안에서 전환한다"를 명시한다.
+- **판단 경로 무변경:** `ProductionState.network`는 여전히 `SET_NETWORK` operation과 제품 화면 버튼으로만
+  바뀐다. `core/`는 `ConnectivityManager`를 모른다. probe 계약과 claim-off 짝 비교가 영향을 받지 않고,
+  기기 없이 재현되는 성질도 그대로다. 공식 채점은 `SET_NETWORK`로 상태를 주입하므로 Q/80 경로도 동일하다.
+- **해결한 위험:** 심사관이 비행기 모드를 켜도 앱이 `ONLINE`만 말하던 화면이 사라졌다. 두 값이 다르면
+  다르다고 말한다. 어느 쪽이 판단을 움직이는지도 화면에 적혀 있다.
+- **구현 선택 — `NetworkCallback` 대신 render 시점 동기 읽기.** 콜백은 lifecycle 해제 실수가 그대로
+  크래시 경로가 되는데(§3에서 전수 차단한 것과 같은 종류), freeze 다음날 그 위험을 지는 대신 화면을
+  열면 최신 값이 보이는 수준으로 충분하다. 읽기 실패·service 부재·권한 부재는 전부 `확인 불가`로
+  수렴하고 화면은 그대로 산다.
+- **권한:** `ACCESS_NETWORK_STATE`는 install-time 권한이라 런타임 거부 대상이 아니다. manifest의
+  "선택 권한을 전부 거부해도 완주한다"는 성질은 그대로 성립한다.
+- **검증:** `ui/DeviceLinkTest.kt` 5개. Android 타입을 건드리지 않는 순수 매핑 함수로 분리해 emulator
+  없이 고정했다. `ConnectivityManager`를 실제로 읽는 부분만 기기 몫으로 남는다.
 
 ### 2. 진짜 multi-select 옵션 — 이번 범위에서 제외
 
@@ -490,14 +501,32 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 ### 4. 기기에서만 가능한 검증 (위 "남은 작업 B" 전체)
 
 `connectedDebugAndroidTest`(ProbeParityTest), 공식 Runner 13-step 완주, V1–V4 변형, `SAMPLE_EXPORT`,
-데모 영상, release 서명 keystore 생성이 모두 미실행이다. 개발 노트북(RAM 5.9 GB, 여유 0.3 GB)에서는
-에뮬레이터가 뜨지 않아 `DemoScriptTranscriptTest`로 화면 내용을 대신 검토했다. 레이아웃·터치 타겟·
-스크롤·Android lifecycle은 그 방법으로 확인할 수 없으므로 8/4 기기 검증에 그대로 남는다.
+데모 영상, release 서명 keystore 생성이 모두 미실행이다.
+
+개발 노트북(RAM 5.9 GB)에서 2026-08-04에 직접 측정한 결과 **에뮬레이터는 뜬다.** `scpc36`
+(android-36 google_apis x86_64, `hw.ramSize=1536`)이 140초에 부팅했고, debug APK 설치(11초)와 앱
+실행이 모두 성공했으며 식당 칩·채팅 입력창까지 의도대로 렌더링됐다. 앱 자체 크래시는 없었다.
+
+쓸 수 없는 이유는 따로 있다. 부팅 시점 호스트 여유 RAM이 0.27 GB뿐이라 **게스트의 시스템 앱이
+버티지 못한다.** `MainActivity` 첫 표시에 16.8초가 걸렸고(`Displayed ... +16s813ms`), Digital
+Wellbeing과 System UI가 연달아 ANR을 냈으며 그 대화상자가 포커스를 가져가 탭 입력이 먹지 않았다.
+13-step은 force-stop·relaunch·network 변경을 포함하므로 이 상태로는 완주할 수 없고, 데모 영상도
+이 화면으로는 찍을 수 없다.
+
+원인이 둘 겹쳤다. ① 호스트 여유 RAM, ② **런북이 지정한 이미지가 아니다.**
+`SETUP_AND_REHEARSAL_RUNBOOK`은 `system-images;android-35;default;x86_64`(AVD `scpc35`)를 쓰라고
+하는데 설치된 것은 android-36 `google_apis` 하나뿐이다. 가장 먼저 ANR을 낸 Digital Wellbeing은
+`default` 이미지에는 아예 없는 앱이다. 어느 기계에서 검증하든 런북 이미지를 먼저 맞춘다.
+
+이에 따라 기기 검증·release 빌드·데모 영상은 RAM 16 GB 노트북에서 수행한다(2026-08-04 결정).
+레이아웃·터치 타겟·스크롤·Android lifecycle은 JVM으로 확인할 수 없으므로 그대로 남는다.
 
 ### 5. 제출물
 
-`MISSION_AND_TECHNICAL_NOTE`·`INSTALL_AND_USE_GUIDE`·`BUILD_AND_SUBMISSION_INFO`·`DEMO_VIDEO` 미착수.
-기술노트의 뼈대는 이 문서의 "핵심 설계 결정"과 "열린 결정"이다.
+문서 3종(`MISSION_AND_TECHNICAL_NOTE`·`INSTALL_AND_USE_GUIDE`·`BUILD_AND_SUBMISSION_INFO`)은
+2026-08-03에 작성됐다. `BUILD_AND_SUBMISSION_INFO` §8 "동결된 산출물"만 최종 빌드 뒤 실제 값으로
+채우면 된다. `DEMO_VIDEO`는 미착수이고 기기가 필요하다. 기술노트의 뼈대는 이 문서의 "핵심 설계
+결정"과 "열린 결정"이다.
 
 ## 협업 규칙
 
@@ -560,3 +589,6 @@ render에 살아남는 경로가 사라졌다. 저장된 기억 자체는 core�
 | 2026-08-03 | 채팅방형 화면 구성(표시 전용, 제품 결정): 입력창을 메신저처럼 화면 하단에 고정하고 스레드는 위에서 스크롤. 스레드 순서를 대화 흐름대로 재배치(대화 → 질문 → 추천 후보 → 주문 초안서 → 주문 완료 후 평가 → 상황, 대본·network·검증 도구는 아래로), 빈 초안 placeholder 제거. 흐름 자체(자연어 → 후보 → 선택 → 항목별 초안 → 빈 칸 질문 → 확정 → 평가 요청 → 리뷰 범위 승인)는 기존 판단 경로 그대로다. JVM 144개 통과 |
 | 2026-08-03 | 기술노트 초안: 루트 `MISSION_AND_TECHNICAL_NOTE.md` — 제출 Mission 선언 전문과 일치 확인 후 §2 필수 10항목(E1–E4·session 경계·인과변화 4건, CORE 1–6 위치, 권위·tombstone·부분복구, 실패 시 예상 state, ASPR claim·claim-off 허용 차이·VIL, mobile counterfactual, 검증 경로, probe 3버튼·parity, model 0회·runtime freeze)을 구성하고 claim→테스트 근거 매핑 표로 마감. 결과경계 준수(점수·PASS/FAIL 미기재) |
 | 2026-08-03 | 에뮬레이터에서 첫 식당 선택 뒤 추천 카드가 나오지 않던 결함 수정. `RESET_AND_START`가 이전 run을 비운 뒤 새 step의 목표·대상 context를 적용하도록 순서를 고치고, `startNewOrder`가 `TARGET_ENTITY`를 명시한다. reset 직후 context와 채팅 입력 전 추천 후보를 고정하는 회귀 테스트 2개 추가. debug·release JVM 각 152개 및 `assembleDebug` 통과 |
+| 2026-08-04 | **메뉴 이름을 타이핑하면 주문 항목이 담기지 않던 결함 수정.** `option.main`의 kind가 `menu_option`이라, 재사용 범위를 말하지 않은 문장(`마라탕으로 할게`)에서 파서가 메뉴에도 "이번 주문만 적용할까요, 기억할까요?" 질문을 붙였고 `say`가 그 값을 미해결로 보고 버려 `addLine` 분기에 도달하지 못했다. 메뉴 slot을 범위 질문 대상에서 제외(`NaturalLanguage.read`). `INSTALL_AND_USE_GUIDE` §3이 심사관에게 그대로 입력하라고 지시하는 E4 문장 2개가 이 경로였고, 기존 대본 테스트는 그 자리에서 `addLine(token)`을 직접 불러 파서를 우회했기 때문에 잡히지 않았다. 타이핑만으로 검증하는 `GuideScriptSentencesTest` 신설. debug·release JVM 각 154개 통과 |
+| 2026-08-04 | **기기의 실제 network 연결을 표시 전용으로 반영.** `ui/DeviceLink.kt`가 render 시점에 `ConnectivityManager`를 읽어 `메뉴 → network 상태`에서 합성 값과 나란히 보여주고, 연결이 끊긴 동안에는 appBar에도 `기기 …`를 덧붙인다. 판단은 그대로 합성 상태만 읽으므로 `core/`·probe 계약·claim-off 비교가 무변경이다. `NetworkCallback` 대신 동기 읽기를 택해 lifecycle 해제 실수로 인한 크래시 경로를 만들지 않았고, 읽기 실패는 전부 `확인 불가`로 수렴한다. `ACCESS_NETWORK_STATE`(install-time) 추가. 순수 매핑 테스트 5개, `INSTALL_AND_USE_GUIDE` §4 갱신. debug·release JVM 각 159개 및 `assembleDebug` 통과 |
+| 2026-08-04 | 개발 노트북에서 에뮬레이터를 실제로 띄워 §4의 "뜨지 않는다" 서술을 측정값으로 교체. 부팅은 되지만 호스트 여유 RAM 0.27 GB에서 게스트 시스템 앱이 ANR을 내 사용 불가이고, 설치된 이미지가 런북 지정(`android-35;default`)과 다른 `android-36;google_apis`임을 확인. 기기 검증·release 빌드·데모 영상은 16 GB 노트북에서 수행하기로 결정. §5의 "제출물 4종 미착수"도 실제 상태(문서 3종 작성 완료)로 정정 |

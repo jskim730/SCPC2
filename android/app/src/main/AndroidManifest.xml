@@ -10,6 +10,18 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Display only. Read at render time to name the device's real connection next
+      to the synthetic network state, because a judge who turns on airplane mode
+      should not see the app still claiming ONLINE. Nothing in the decision path
+      reads it: the agent keeps judging on the synthetic state that SET_NETWORK
+      and the in-app buttons drive, which is what keeps a run reproducible off the
+      device. This is an install-time permission with no runtime prompt, so the
+      "every optional permission denied" path above is unaffected; if it were
+      withheld anyway, the reader reports 확인 불가 and nothing else changes.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
