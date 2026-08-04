@@ -8,6 +8,8 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,6 +29,8 @@ class ProductFlowProbeTest {
     private val pricing = DraftPricing(catalog)
     private val daon = catalog.restaurant("restaurant.daon")!!
     private val ongi = catalog.restaurant("restaurant.ongi")!!
+    private val marahyang = catalog.restaurant("restaurant.marahyang")!!
+    private val hanbam = catalog.restaurant("restaurant.hanbam")!!
     private val bulkkot = catalog.restaurant("restaurant.bulkkot")!!
 
     private fun surface(): ProductSurface = ProductSurface(
@@ -108,17 +112,24 @@ class ProductFlowProbeTest {
         surface.addLine(ongi, "menu.ongi.perilla")
         val outcome = surface.requestDecision(ongi)
 
-        assertEquals(
-            "the stored spiciness is applied without asking again",
-            FieldStatus.AUTO_APPLIED,
-            surface.field(Slots.SPICINESS)?.status,
+        // 온기한상 does not offer a spiciness option on anything it sells, so the
+        // stored 순한맛 has nothing to attach to here. It used to become an
+        // order-level row all the same — a value the user could open and never
+        // answer, on a draft whose kitchen has no such choice. Reuse is shown by
+        // the options this restaurant actually has.
+        assertNull(
+            "an option this restaurant does not offer raises no row at all",
+            surface.field(Slots.SPICINESS),
+        )
+        assertTrue(
+            "and the preference itself is untouched, waiting for a menu that has it",
+            surface.storedPreferencesFor(Slots.SPICINESS).any { it.value == "spice.mild" },
         )
         assertEquals(
             "the stored utensil choice is applied without asking again",
             FieldStatus.AUTO_APPLIED,
             surface.field(Slots.UTENSIL)?.status,
         )
-        assertEquals("spice.mild", surface.field(Slots.SPICINESS)?.value)
         assertEquals(
             "the stored rice amount fills this line without asking again",
             FieldStatus.AUTO_APPLIED,
@@ -134,6 +145,42 @@ class ProductFlowProbeTest {
         surface.remember(ongi, catalog.slot(Slots.SALTINESS), "salt.light", stable = false)
         surface.answerRemaining(catalog, ongi)
         assertEquals("ACT", decision(surface.requestDecision(ongi)))
+    }
+
+    @Test
+    fun `a draft carries only the options its own dishes have`() {
+        // 한밤국수's 잔치국수 has 간·밥양·계란·국물양·파 and no 고수. A 고수 preference
+        // learned over 마라탕 showed up on it anyway, as a row whose 변경 button
+        // could be opened and then refused every value it was offered.
+        val surface = surface()
+        surface.startNewOrder(marahyang)
+        surface.addLine(marahyang, "menu.marahyang.malatang")
+        surface.remember(marahyang, catalog.slot(Slots.CILANTRO), "cilantro.exclude", stable = true)
+        surface.remember(marahyang, catalog.slot(Slots.UTENSIL), "utensil.exclude", stable = true)
+        assertNotNull(
+            "it is a row where the dish has the option",
+            surface.lineField("l1", Slots.CILANTRO),
+        )
+
+        surface.nextOrderSession(hanbam)
+        surface.addLine(hanbam, "menu.hanbam.janchi")
+
+        val cilantroRows = surface.state().fields.values.filter { field ->
+            field.slotId.contains(Slots.CILANTRO.removePrefix("option."))
+        }
+        assertTrue(
+            "no 고수 row anywhere on a draft whose kitchen has none ($cilantroRows)",
+            cilantroRows.isEmpty(),
+        )
+        assertEquals(
+            "while the utensil, which the restaurant declares order-level, is reused",
+            FieldStatus.AUTO_APPLIED,
+            surface.field(Slots.UTENSIL)?.status,
+        )
+        assertTrue(
+            "and the 고수 preference is kept for a menu that has it",
+            surface.storedPreferencesFor(Slots.CILANTRO).any { it.value == "cilantro.exclude" },
+        )
     }
 
     @Test

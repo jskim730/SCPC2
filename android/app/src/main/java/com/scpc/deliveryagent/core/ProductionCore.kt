@@ -20,6 +20,17 @@ data class DraftConfiguration(
     val requiredSlotIds: Set<String>,
     val neverAutoApplySlotIds: Set<String>,
     val unusableValues: Set<String>,
+    /**
+     * Slots that only ever belong to an order line, never to the order itself.
+     *
+     * A stored preference whose slot no declared line distributes would otherwise
+     * stand as a field of the order — so a 고수 preference learned at one
+     * restaurant appeared on a draft at another whose menu has no 고수 at all. It
+     * is a denylist rather than the reverse so a caller that declares nothing —
+     * the probe path, whose input has no lines and one field per slot — keeps
+     * exactly the projection it had.
+     */
+    val lineOnlySlotIds: Set<String> = emptySet(),
 )
 
 /** Product-evaluated money/time constraint applied atomically with a decision. */
@@ -152,6 +163,8 @@ class ProductionCore(
         state.neverAutoApplySlots.addAll(configuration.neverAutoApplySlotIds)
         state.unusableValues.clear()
         state.unusableValues.addAll(configuration.unusableValues)
+        state.lineOnlySlots.clear()
+        state.lineOnlySlots.addAll(configuration.lineOnlySlotIds)
         // A line/schema change invalidates the previous roll-up decision. The
         // product recomputes money/time against this exact structure immediately
         // before the next decision request.

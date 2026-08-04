@@ -234,6 +234,10 @@ object AsprEngine {
             // A scoped preference only ever fills the lines its scope matches; it
             // never becomes an order-level field of its own.
             if (winner.baseSlotId != null && winner.baseSlotId != slotId) return@forEach
+            // Nor does a preference for something only an order line can carry. No
+            // line here distributes it, which means this kitchen does not offer it
+            // at all — so it is not a row of this order, in any state.
+            if (slotId in state.lineOnlySlots) return@forEach
             rebuilt[fieldIdFor(slotId)] = buildField(
                 state = state,
                 stepId = stepId,
@@ -272,6 +276,7 @@ object AsprEngine {
         // proposal the user can accept, so it opens its own confirmation.
         selection.ranking.toSortedMap().forEach { (slotId, facts) ->
             if (slotId in lineSlotIds || slotId in lineBaseSlotIds) return@forEach
+            if (slotId in state.lineOnlySlots) return@forEach
             val fieldId = fieldIdFor(slotId)
             if (rebuilt.containsKey(fieldId)) return@forEach
             val proposal = facts.minByOrNull { it.factId } ?: return@forEach

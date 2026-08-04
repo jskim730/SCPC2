@@ -509,8 +509,40 @@ class ProductSurface(
             // not quietly rounded to the nearest one; that field is asked again.
             unusableValues = (catalog.unusableValueTokens() +
                 catalog.valuesNotOfferedBy(restaurant)).toSet(),
+            lineOnlySlotIds = lineOnlySlotIds(restaurant, lines),
         )
     }
+
+    /**
+     * Menu options that have no place on this order, so they raise no field.
+     *
+     * Every menu option belongs to the dish that carries it; the exception is what
+     * the restaurant declares order-level — the disposable utensil, which is about
+     * the delivery rather than any one dish.
+     *
+     * With dishes chosen, an option none of them carries has nothing to attach to:
+     * a 고수 preference learned over 마라탕 has nothing to say about 잔치국수, whose
+     * kitchen has no 고수, and it appeared as an order row the user could open but
+     * never answer. With no dish chosen yet the order-level field is the only place
+     * a stored preference can be seen at all, so only what this kitchen does not
+     * offer anywhere is held back.
+     */
+    private fun lineOnlySlotIds(
+        restaurant: RestaurantDefinition,
+        lines: List<DraftLineDecl>,
+    ): Set<String> = catalog.slots
+        .filter { it.kind == SlotKind.MENU_OPTION }
+        .filterNot { it.scopeToken == Slots.MAIN || it.scopeToken == Slots.QUANTITY }
+        .filterNot { it.scopeToken in restaurant.orderLevelSlots }
+        .filter { slot ->
+            if (lines.isEmpty()) {
+                slot.scopeToken !in restaurant.slotTokens
+            } else {
+                lines.none { line -> line.slots.any { it.baseSlotId == slot.slotId } }
+            }
+        }
+        .map { it.slotId }
+        .toSet()
 
     /** Option slots that attach to a line of this menu at this restaurant. */
     private fun lineOptionSlots(

@@ -86,6 +86,17 @@ class ProductionState {
     val unusableValues: MutableSet<String> = linkedSetOf()
 
     /**
+     * Slots that belong to an order line and never to the order itself.
+     *
+     * A stored preference for one of these fills the lines whose menu carries it
+     * and nothing else. Where no line carries it — the kitchen simply does not
+     * offer that option — it produces no field at all, rather than an order-level
+     * row the user cannot act on. Probe input declares none, so this is empty
+     * there and projection keeps its one-field-per-slot shape.
+     */
+    val lineOnlySlots: MutableSet<String> = linkedSetOf()
+
+    /**
      * Whether the current draft satisfies the constraints the user stated, such as
      * a budget. The amount itself is presentation, so the product surface decides
      * this and the engine only reports it honestly.
@@ -185,6 +196,7 @@ class ProductionState {
         requiredSlots.clear()
         neverAutoApplySlots.clear()
         unusableValues.clear()
+        lineOnlySlots.clear()
         constraintSatisfied = true
         constraintReason = ""
         authorityTokens.clear()
@@ -226,6 +238,7 @@ class ProductionState {
         .put("requiredSlots", JSONArray(requiredSlots.toList()))
         .put("neverAutoApplySlots", JSONArray(neverAutoApplySlots.toList()))
         .put("unusableValues", JSONArray(unusableValues.toList()))
+        .put("lineOnlySlots", JSONArray(lineOnlySlots.toList()))
         .put("constraintSatisfied", constraintSatisfied)
         .put("constraintReason", constraintReason)
         .put("facts", mapJson(facts) { it.toJson() })
@@ -299,6 +312,7 @@ class ProductionState {
             json.optJSONArray("neverAutoApplySlots")?.strings()
                 ?.let(state.neverAutoApplySlots::addAll)
             json.optJSONArray("unusableValues")?.strings()?.let(state.unusableValues::addAll)
+            json.optJSONArray("lineOnlySlots")?.strings()?.let(state.lineOnlySlots::addAll)
             state.constraintSatisfied = json.optBoolean("constraintSatisfied", true)
             state.constraintReason = json.optString("constraintReason", "")
             json.optJSONObject("facts")?.let { facts ->
