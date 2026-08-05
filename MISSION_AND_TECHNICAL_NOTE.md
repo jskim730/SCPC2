@@ -10,7 +10,7 @@ Mission & Technical Note · 참가자: First_penguin · 2026-08-05 KST
 사용자의 정정과 철회가 누적되면 오래된 기억은 오히려 잘못된 자동화를 만든다. 이 제품의 Primary
 value는 **반복 입력을 줄이면서도, 불확실하거나 권한이 없는 값은 다시 확인하는 것**이다.
 
-장기 목표는 여러 주문 session 뒤에도 다음 세 가지가 함께 유지되는 것이다.
+주문을 여러 번 반복해도 아래 세 가지가 동시에 지켜지는 것이 장기 목표다.
 
 - 유효하고 허용된 취향은 주문서에 먼저 채워져 반복 부담이 줄어든다.
 - 오늘의 지시, 정정, 철회와 삭제는 과거 기억보다 우선한다.
@@ -46,7 +46,7 @@ session 경계는 주문 단위다. 새 주문은 새 대화와 one-off 영역�
 기억과 action ledger는 이어진다. process 경계는 session 경계가 아니다. 앱을 종료해도 현재 주문서,
 대화, memory, action과 outcome이 디스크에서 복원된다.
 
-대표적인 downstream causal change는 다음과 같다.
+앞 episode가 뒤 episode를 바꾸는 지점은 구체적으로 네 곳이다.
 
 - E1의 고수 범위 승인이 E2의 다른 식당 마라 메뉴를 자동으로 채우되 일반 메뉴에는 영향을 주지 않는다.
 - E3의 수저 권한 철회가 이후 주문에서 수저를 다시 묻게 하지만 다른 취향은 그대로 유지한다.
@@ -61,7 +61,7 @@ session 경계는 주문 단위다. 새 주문은 새 대화와 one-off 영역�
 
 ### 4.1 Typed fact
 
-각 fact는 다음 정보를 가진다.
+각 fact가 지니는 정보는 다섯 가지다.
 
 | 차원 | 의미 |
 |---|---|
@@ -109,10 +109,10 @@ core는 한국어 문장이나 메뉴명을 기준으로 분기하지 않는다.
 MainActivity / MemoryActivity / ComparisonActivity
                          |
 Public Probe UI ---------+--> ProductSurface / ProductionCore
-Protected Probe adapter -+             |
-                                      ProductionState repository
-                                      + action / outcome ledger
-                                      + EvidenceWriter
+Protected Probe adapter -+                  |
+                                     ProductionState repository
+                                     + action / outcome ledger
+                                     + EvidenceWriter
 ```
 
 제품 UI, 공개 Probe UI와 protected Probe adapter는 모두 `ProductionCore`와 같은 영속 repository를
@@ -146,7 +146,7 @@ process 재시작 또는 duplicate event가 와도 이미 존재하는 action을
 
 이 문제에서 모바일의 핵심은 작은 화면 자체가 아니라 **짧은 상호작용 사이의 중단과 재개**다. 사용자는
 주문을 구성하다가 앱을 떠나고, 평가 요청은 나중에 도착하며, 다음 주문에서 과거의 선택을 다시 만난다.
-앱은 이 lifecycle을 다음과 같이 제품 기능으로 다룬다.
+앱이 이 lifecycle을 제품 기능으로 흡수하는 방식은 네 가지다.
 
 - 대화, 주문서와 memory를 입력 직후 app-local로 지속화한다.
 - 실제 process kill 뒤 같은 주문 화면과 미완료 질문을 복원한다.
@@ -176,7 +176,7 @@ evidence와 실행 namespace는 완전히 분리된다.
 
 ## 9. CORE와 구현 근거
 
-| CORE | 제품에서 관찰되는 성질 | 주요 source·test |
+| CORE | 제품에서 관찰되는 성질 | 검증 테스트 |
 |---|---|---|
 | CORE-1 선택적 맥락 | 다른 entity·goal, 만료 조건과 미승인 리뷰 후보를 배제 | `ScopedPreferenceTest`, `MetamorphicProbeTest` |
 | CORE-2 현재 권위 | 정정·철회·삭제 우선, descendant 제거와 no-resurrection | `ReviewMemoryTest`, `ProbeOperationContractTest` |
