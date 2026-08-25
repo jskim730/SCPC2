@@ -1,6 +1,6 @@
 # 본선 발표 근거 강화 — 기기 검증 계획
 
-작성 2026-08-14 · 발표자료 v2(15p) 기준 · 실행 대본은 [DEVICE_TEST_SCRIPTS.md](../DEVICE_TEST_SCRIPTS.md) 참조
+작성 2026-08-14 · 발표자료 v2(15p) 기준 · 실행 대본은 [DEVICE_TEST_SCRIPTS.md](../docs/verification/DEVICE_TEST_SCRIPTS.md) 참조
 
 ## 0. 원칙 (먼저 읽기)
 

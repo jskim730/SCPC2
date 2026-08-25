@@ -877,5 +877,5 @@ tb(s, 1.0, 5.35, 11.3, 0.9, [
 tb(s, 1.0, 6.35, 11.3, 0.5, [P("감사합니다  ·  Q&A", 15, "8B97AB")])
 notes(s, "[15초] 핵심 문장 하나로 마무리하고 Q&A로. 질문이 오면 해당 artifact(화면·export·테스트)를 특정해서 답할 것.")
 
-prs.save(r"C:\Users\Infocar\SCPC2\finals_presentation\SCPC2026_본선발표자료_First_penguin.pptx")
+prs.save(r"C:\Users\Infocar\SCPC2\finals_presentation\draft_deck\SCPC2026_본선발표자료_First_penguin_v2.pptx")
 print("saved 15 slides")
