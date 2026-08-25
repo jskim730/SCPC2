@@ -3,7 +3,7 @@
 ## Required context
 
 Before planning, implementing, testing, documenting, or packaging this project, read
-`COMPETITION_CONTEXT.md`.
+`docs/competition/COMPETITION_CONTEXT.md`.
 
 For technical details, also read the relevant official source under `release_v3/`. Treat
 `release_v3/` as a read-only reference Kit; do not use it as the app implementation directory and do not
@@ -11,7 +11,7 @@ leave generated caches or build outputs inside it.
 
 ## Source-of-truth policy
 
-- Use `COMPETITION_CONTEXT.md` as the default local snapshot for stable competition facts.
+- Use `docs/competition/COMPETITION_CONTEXT.md` as the default local snapshot for stable competition facts.
 - Use Dacon's current competition pages and talk answers when the task concerns a new announcement, changed deadline,
   upload path, organizer clarification, or other current operational state.
 - Dacon's newer official notice overrides the local snapshot. Update the context document and its change log when that

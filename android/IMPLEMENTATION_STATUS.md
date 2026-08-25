@@ -3,7 +3,7 @@
 최종 갱신: 2026-08-05 KST · 프로젝트 root: `android/` · 저장소: `github.com/jskim730/SCPC2`
 
 이 문서는 **협업 인수인계 문서**다. 코드를 바꿀 때 이 문서의 "핵심 설계 결정"과 "남은 작업"을
-같은 커밋에서 갱신한다. 공식 사실의 기준은 항상 루트의 `COMPETITION_CONTEXT.md`와 `release_v3/`다.
+같은 커밋에서 갱신한다. 공식 사실의 기준은 항상 `docs/competition/COMPETITION_CONTEXT.md`와 `release_v3/`다.
 
 ## 한눈에
 
