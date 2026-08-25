@@ -22,6 +22,11 @@ keystore.properties
 *.pem
 *.key
 
+# Scratch space. `tmp/` held extracted copies of SOURCE.zip and SAMPLE_EXPORT,
+# rendered PDF pages and uiautomator dumps -- all reproducible from the frozen
+# artifacts under output/submission/, and one copy leaked a local run token.
+tmp/
+
 # Generated rehearsal/runtime artifacts.
 #
 # `work/` is scratch space for rehearsal runs and nothing in it belongs in the
