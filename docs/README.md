@@ -7,6 +7,7 @@
 | 파일 | 내용 |
 |---|---|
 | [`COMPETITION_CONTEXT.md`](competition/COMPETITION_CONTEXT.md) | 공식 규칙 snapshot(§0–§22). 채점 축, hard gate, 제출 규격, 자격 조건. 기술 판단의 근거는 여기서 인용했습니다 |
+| [`OFFICIAL_KIT.md`](competition/OFFICIAL_KIT.md) | 공식 Kit을 저장소에 포함하지 않은 이유, 구성 내역, Kit이 있어야 돌아가는 스크립트 |
 
 ## mission/ — 동결된 범위
 

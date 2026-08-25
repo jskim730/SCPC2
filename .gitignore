@@ -45,6 +45,13 @@ SAMPLE_EXPORT/
 SOURCE.zip
 EXPORT_INDEX.json
 
+# Official competition Kit. Dacon distributes it from the competition page and
+# verifies the release before publication; nothing in the rules grants
+# redistribution. It stays on disk so tools/win_*_shim.py and
+# make_probe_variants.py keep working locally, but it is not this project's
+# work to publish. See docs/competition/OFFICIAL_KIT.md.
+release_v3/
+
 # Office temporary lock files
 ~$*.docx
 ~$*.xlsx

@@ -80,12 +80,16 @@ output/
   submission/               제출물 7종 — 동결된 그대로 (APK · SOURCE.zip · SAMPLE_EXPORT · PDF · 영상)
   pdf/                      제출 PDF 2종의 빌드 산출물
 finals_presentation/        본선 발표 자료 — 제출 deck, 대본, 예상 질의응답
-release_v3/                 대회 공식 Kit (읽기 전용 참조)
 tools/                      SOURCE.zip·PDF 빌드, 변형 Probe 생성, Windows 실행 shim
 test-fixtures/probe/        변형 Probe 입력 V1–V4
 work/harness/               공식 harness의 Windows 대응본
 MISSION_LOCK.json           Dacon 발급 Mission 동결 정본 (수정 금지)
 ```
+
+대회 공식 Kit(`release_v3/`)은 **포함하지 않습니다.** Dacon이 배포·검증하는 자료이고 재배포를 허용하는
+조항이 없습니다. 무엇이 들어 있었고 어떤 스크립트가 그것을 필요로 하는지는
+[`docs/competition/OFFICIAL_KIT.md`](docs/competition/OFFICIAL_KIT.md)에 기록했습니다.
+JVM 테스트 197개는 Kit 없이 통과합니다.
 
 **루트에 남긴 4개 문서**(`BUILD_AND_SUBMISSION_INFO.md`, `THIRD_PARTY_NOTICES.md`,
 `MISSION_AND_TECHNICAL_NOTE.md`, `INSTALL_AND_USE_GUIDE.md`)는 `tools/`의 빌드 스크립트가 루트 경로로
